@@ -1,0 +1,64 @@
+// COPIA SINCRONIZADA. El original vive en strix-auth
+// (proto/authorization/v1/authorization.proto) y es su dueño: el PDP es quien
+// implementa este servicio. Aquí está para que los Cores compartan un único
+// stub del contrato en lugar de una copia por repo.
+//
+// Debe ser idéntico al original salvo la línea go_package. Para
+// resincronizarlo: `make sync-proto` (o copiar el original y reponer el
+// go_package de abajo), y después `buf generate`.
+//
+// Esta copia existe porque la anterior —una por Core, sin nada que las
+// midiera entre sí— dejó divergir el comentario normativo del campo `action`
+// hasta que un Core nombró sus acciones de forma que un forbid de la política
+// dejó de coincidir (gitops#38).
+
+syntax = "proto3";
+
+package authorization.v1;
+
+option go_package = "github.com/hs-javierviquez/strix-core-kit/gen/authorization/v1;authorizationv1";
+
+// AuthorizationService is the abstract PEP<->PDP interface
+// (security-contract §8.5). The PEP (each Core) validates the JWT itself and
+// passes the already-verified claims here; the PDP never parses tokens. This
+// keeps Cores agnostic to whether the PDP runs centrally or as a sidecar.
+//
+// Phase 1: CheckPermission is a stub that evaluates entitlements only
+// (deny by default). ReBAC and Cedar layers arrive in later phases behind
+// this same interface.
+service AuthorizationService {
+  rpc CheckPermission(CheckPermissionRequest) returns (CheckPermissionResponse);
+}
+
+message CheckPermissionRequest {
+  // tenant_id from the verified JWT (hard multi-tenant isolation).
+  string tenant_id = 1;
+  // subject_id is the user id (JWT sub).
+  string subject_id = 2;
+  // action being attempted, as "<module>.<verb>" — exactly two segments,
+  // e.g. "invoices.create", "clients.delete".
+  //
+  // The PDP splits on the FIRST dot: the head is the entitlement module and
+  // the tail is the verb the baseline policy evaluates. A third segment is not
+  // a namespace, it is swallowed by the verb ("client.delete" is neither a
+  // read nor an admin verb), which silently drops the action into the write
+  // bucket and stops any per-action forbid from matching by name.
+  string action = 3;
+  string resource_type = 4;
+  string resource_id = 5;
+  // entitlements claim from the verified JWT (modules the tenant owns).
+  repeated string entitlements = 6;
+  // context carries extra attributes for Cedar evaluation.
+  //
+  // These are merged AFTER the attributes the PDP derives itself, so a key
+  // repeated here overwrites the derived one — including "verb", "module",
+  // "tenant_id", "entitlements" and "relations". A caller can therefore lower
+  // the tier its own request is evaluated at. Send domain attributes here, not
+  // the reserved names.
+  map<string, string> context = 7;
+}
+
+message CheckPermissionResponse {
+  bool allowed = 1;
+  string reason = 2;
+}

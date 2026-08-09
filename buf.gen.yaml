@@ -1,0 +1,11 @@
+# Codegen del contrato PEP<->PDP. Solo gRPC: el kit es el lado cliente, no
+# expone REST. Correr con:
+#   buf generate
+version: v2
+plugins:
+  - remote: buf.build/protocolbuffers/go
+    out: gen
+    opt: paths=source_relative
+  - remote: buf.build/grpc/go
+    out: gen
+    opt: paths=source_relative
