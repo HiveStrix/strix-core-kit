@@ -24,6 +24,17 @@ func withClaims(ctx context.Context, c *Claims) context.Context {
 	return context.WithValue(ctx, claimsContextKey{}, c)
 }
 
+// ContextWithClaims seeds a context the way the interceptor would, for tests
+// that exercise a handler or the gate without standing up a gRPC server and
+// signing a token. Production code has no reason to call it: the interceptor is
+// the one place identity enters the process.
+func ContextWithClaims(ctx context.Context, c *Claims) context.Context {
+	ctx = withClaims(ctx, c)
+	ctx = tenantctx.WithTenant(ctx, c.TenantID)
+	ctx = tenantctx.WithSubject(ctx, c.Subject)
+	return tenantctx.WithEntitlements(ctx, c.Entitlements)
+}
+
 // ClaimsFrom returns the verified claims a handler should use for tenant and
 // subject identity.
 func ClaimsFrom(ctx context.Context) (*Claims, bool) {
@@ -65,10 +76,6 @@ func UnaryServerInterceptor(verifier *Verifier) grpc.UnaryServerInterceptor {
 			return nil, status.Errorf(codes.Unauthenticated, "auth: %v", err)
 		}
 
-		ctx = withClaims(ctx, claims)
-		ctx = tenantctx.WithTenant(ctx, claims.TenantID)
-		ctx = tenantctx.WithSubject(ctx, claims.Subject)
-		ctx = tenantctx.WithEntitlements(ctx, claims.Entitlements)
-		return handler(ctx, req)
+		return handler(ContextWithClaims(ctx, claims), req)
 	}
 }

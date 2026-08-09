@@ -29,13 +29,28 @@ El detalle completo está en
 |---|---|
 | `auth` | El PEP: verificación local del access token (EdDSA fijado en código, `typ=at+jwt`, `iss`, `aud` any-of, `tenant_id` obligatorio) y el interceptor gRPC que siembra la identidad en el contexto |
 | `pdp` | Cliente de `CheckPermission`, fail-closed y con deadline |
+| `authz` | El gate deny-by-default: entitlement local y decisión delegada al PDP |
 | `tenantctx` | El tenant y el subject verificados, a través del contexto |
 | `textnorm` | Normalización de nombres para búsqueda sin `unaccent` |
 | `gen/authorization/v1` | Stubs del contrato PEP↔PDP, generados de una sola copia del proto |
 
-Pendientes de fases posteriores: `authz` (el gate y el contrato de acción/verbo),
-la tenancy (pools por tenant, resolución de DSN), el relay del outbox, `sanitize`
-y los helpers de `config`.
+Pendientes de fases posteriores: la tenancy (pools por tenant, resolución de
+DSN), el relay del outbox, `sanitize` y los helpers de `config`.
+
+## Cómo se nombran las acciones
+
+`<module>[.<grupo>...].<verbo>`. El PDP toma el módulo del **primer** segmento y
+el verbo del **último**; lo de en medio es libre.
+
+El verbo se deriva, nunca se declara: el kit no envía `context` al PDP y el PDP
+ignora las claves que él mismo deriva. **Nombrar la acción es elegir el nivel al
+que se la juzga.** Una acción que requiere `tenant-admin` termina en un verbo que
+lo diga —`expenses.taxrate.admin`— en vez de tomar prestado el nombre de una
+escritura y pedir un trato distinto por otro canal.
+
+El gate además rechaza una acción cuyo primer segmento no sea el módulo del
+core: es un error de programación que, sin la comprobación, se manifiesta como
+la petición evaluada contra las reglas de otro módulo.
 
 ## Uso
 

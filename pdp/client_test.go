@@ -152,8 +152,7 @@ func TestAllowedDeniesWhenThePDPIsUnreachable(t *testing.T) {
 	}
 }
 
-// The verified claims must reach the PDP as sent, and Verb must travel as
-// context["verb"] — that key is what the baseline policy reads.
+// The verified claims must reach the PDP exactly as the gate assembled them.
 func TestAllowedForwardsTheVerifiedRequest(t *testing.T) {
 	f := &fakePDP{handler: allow(true, "")}
 	c := serve(t, f, DefaultTimeout)
@@ -165,7 +164,6 @@ func TestAllowedForwardsTheVerifiedRequest(t *testing.T) {
 		ResourceType: "item",
 		ResourceID:   "item-9",
 		Entitlements: []string{"expenses"},
-		Verb:         "read",
 	})
 	if err != nil {
 		t.Fatalf("Allowed returned error: %v", err)
@@ -178,21 +176,22 @@ func TestAllowedForwardsTheVerifiedRequest(t *testing.T) {
 	if got.GetAction() != "expenses.catalog.read" {
 		t.Errorf("action = %q", got.GetAction())
 	}
-	if got.GetContext()["verb"] != "read" {
-		t.Errorf("context[verb] = %q, want %q", got.GetContext()["verb"], "read")
+	if got.GetResourceType() != "item" || got.GetResourceId() != "item-9" {
+		t.Errorf("resource = (%q, %q), want (item, item-9)", got.GetResourceType(), got.GetResourceId())
 	}
 }
 
-// An empty Verb must not be sent: an empty string would overwrite the verb the
-// PDP derives from the action and drop the request into no bucket at all.
-func TestAllowedOmitsAnEmptyVerb(t *testing.T) {
+// The Core sends no context at all. The verb, module, tenant and entitlements
+// the policy reads are the PDP's to derive; a Core that could restate them
+// would be choosing the tier it is judged at.
+func TestAllowedSendsNoContext(t *testing.T) {
 	f := &fakePDP{handler: allow(true, "")}
 	c := serve(t, f, DefaultTimeout)
 
-	if _, _, err := c.Allowed(context.Background(), Request{Action: "tasks.create"}); err != nil {
+	if _, _, err := c.Allowed(context.Background(), Request{Action: "expenses.catalog.write"}); err != nil {
 		t.Fatalf("Allowed returned error: %v", err)
 	}
-	if _, ok := f.recorded().GetContext()["verb"]; ok {
-		t.Errorf("context carries a verb key with no Verb set: %v", f.recorded().GetContext())
+	if got := f.recorded().GetContext(); len(got) != 0 {
+		t.Errorf("context = %v, want empty", got)
 	}
 }

@@ -30,16 +30,6 @@ type Request struct {
 	ResourceType string
 	ResourceID   string
 	Entitlements []string
-	// Verb overrides the verb the PDP derives from Action for its global
-	// baseline policy, which grants reads to any user of an entitled tenant and
-	// writes only to member/tenant-admin.
-	//
-	// It is an OVERRIDE, not an annotation: the PDP merges this after its own
-	// derivation, so a value here replaces the derived one and decides the tier
-	// the request is evaluated at. Do not set it by hand from a handler — the
-	// authz gate derives it, so that the verb the policy sees can never drift
-	// from the action the Core asked for (gitops#38).
-	Verb string
 }
 
 // DefaultTimeout bounds a CheckPermission call. With WaitForReady set, a PDP
@@ -92,14 +82,14 @@ func (c *Client) Close() error {
 //
 // A timeout bounds the call so a hung PDP degrades into a denial instead of
 // holding the request open forever.
+//
+// No context map is sent. The verb, module, tenant and entitlements the policy
+// evaluates are all derived by the PDP from what is already here, and it
+// reserves those keys precisely so a Core cannot restate them and pick the tier
+// it is judged at (gitops#38).
 func (c *Client) Allowed(ctx context.Context, req Request) (allowed bool, reason string, err error) {
 	ctx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
-
-	pdpCtx := map[string]string{}
-	if req.Verb != "" {
-		pdpCtx["verb"] = req.Verb
-	}
 
 	resp, err := c.rpc.CheckPermission(ctx, &authorizationv1.CheckPermissionRequest{
 		TenantId:     req.TenantID,
@@ -108,7 +98,6 @@ func (c *Client) Allowed(ctx context.Context, req Request) (allowed bool, reason
 		ResourceType: req.ResourceType,
 		ResourceId:   req.ResourceID,
 		Entitlements: req.Entitlements,
-		Context:      pdpCtx,
 	})
 	if err != nil {
 		return false, "", fmt.Errorf("pdp: check permission: %w", err)
