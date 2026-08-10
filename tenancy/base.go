@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"fmt"
 	"io/fs"
+	"net/url"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -130,6 +132,17 @@ func Migrate(dsn string, migrations fs.FS) error {
 	}
 	defer db.Close()
 
+	// El schema que fija el search_path del DSN puede no existir todavía: el
+	// fan-out PostSync corre sobre TODA base de tenant, incluidas aquellas donde
+	// el módulo nunca se activó y por tanto el provisioner jamás lo creó. Sin
+	// schema, goose no tiene dónde poner su tabla de versión y Postgres responde
+	// "no schema has been selected to create in".
+	if schema := schemaFromDSN(dsn); schema != "" {
+		if _, err := db.Exec("CREATE SCHEMA IF NOT EXISTS " + pgx.Identifier{schema}.Sanitize()); err != nil {
+			return fmt.Errorf("tenancy: create schema %q: %w", schema, err)
+		}
+	}
+
 	goose.SetBaseFS(migrations)
 	if err := goose.SetDialect("postgres"); err != nil {
 		return fmt.Errorf("tenancy: goose dialect: %w", err)
@@ -138,4 +151,23 @@ func Migrate(dsn string, migrations fs.FS) error {
 		return fmt.Errorf("tenancy: goose up: %w", err)
 	}
 	return nil
+}
+
+// schemaFromDSN lee el schema que el DSN fija en options=-csearch_path=...
+//
+// Devuelve cadena vacía cuando el DSN no fija ninguno, que es la señal de "no
+// crees nada": una migración sin search_path va al schema por defecto y ahí no
+// hay nada que preparar.
+func schemaFromDSN(dsn string) string {
+	u, err := url.Parse(dsn)
+	if err != nil {
+		return ""
+	}
+	_, after, found := strings.Cut(u.Query().Get("options"), "-csearch_path=")
+	if !found {
+		return ""
+	}
+	// search_path admite una lista; el schema del Core es siempre el primero.
+	first, _, _ := strings.Cut(after, ",")
+	return strings.TrimSpace(first)
 }
