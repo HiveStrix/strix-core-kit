@@ -32,6 +32,7 @@ El detalle completo está en
 | `authz` | El gate deny-by-default: entitlement local y decisión delegada al PDP |
 | `tenantctx` | El tenant y el subject verificados, a través del contexto |
 | `textnorm` | Normalización de nombres para búsqueda sin `unaccent` |
+| `decimals` | Límites de magnitud y precisión para los números que manda un usuario, antes de que lleguen al cálculo o a la base |
 | `gen/authorization/v1` | Stubs del contrato PEP↔PDP, generados de una sola copia del proto |
 
 Pendientes de fases posteriores: la tenancy (pools por tenant, resolución de
@@ -69,6 +70,25 @@ informativo.
 claims, _ := auth.ClaimsFrom(ctx)
 tenant := tenantctx.Tenant(ctx)
 ```
+
+Todo número que venga de un usuario pasa por `decimals` **en la frontera**, antes
+del cálculo y antes de la base:
+
+```go
+monto, err := decimals.Parse(req.GetAmount(), "monto")   // límites Money
+factor, err := decimals.ParseWith(s, "factor", decimals.Factor)
+```
+
+No es una validación de formulario que el front pueda cubrir. Un `decimal` cuesta
+casi nada en memoria y **un byte por dígito al renderizarlo**, y un Core renderiza
+todo lo que persiste: un `1e9` que entre sin filtro se convierte en ~1 GB de
+asignación al escribirlo de vuelta. Así murió `core-expenses` dos veces
+(`OOMKilled`, sin dejar log, porque `SIGKILL` no deja escribir). El chequeo es
+barato precisamente porque nunca renderiza.
+
+Ojo con los números que van a la base **como string** sin parsearse en Go: ahí no
+hay nada que los rechace, y `numeric` de Postgres acepta magnitudes que después
+nadie puede leer de vuelta.
 
 ## El proto
 
