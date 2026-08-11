@@ -7,6 +7,7 @@ require (
 	github.com/lestrrat-go/jwx/v3 v3.1.1
 	github.com/nats-io/nats.go v1.52.0
 	github.com/pressly/goose/v3 v3.27.3
+	github.com/shopspring/decimal v1.4.0
 	golang.org/x/text v0.40.0
 	google.golang.org/grpc v1.83.0
 	google.golang.org/protobuf v1.36.11
