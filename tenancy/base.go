@@ -137,9 +137,26 @@ func Migrate(dsn string, migrations fs.FS) error {
 	// el módulo nunca se activó y por tanto el provisioner jamás lo creó. Sin
 	// schema, goose no tiene dónde poner su tabla de versión y Postgres responde
 	// "no schema has been selected to create in".
+	// Se COMPRUEBA antes de crear, y no basta con `IF NOT EXISTS`: ese
+	// modificador evita el error de "ya existe", pero Postgres verifica el
+	// privilegio ANTES, y `CREATE SCHEMA` lo exige sobre la BASE DE DATOS, no
+	// sobre el schema. El rol de un Core tiene CREATE en su propio schema y
+	// nada sobre la base — como debe ser: crear schemas es activar un módulo,
+	// y eso lo decide el provisioner.
+	//
+	// Sin esta comprobación, migrar un schema que ya existe fallaba con
+	// "permission denied for database" aunque no hubiera nada que crear.
 	if schema := schemaFromDSN(dsn); schema != "" {
-		if _, err := db.Exec("CREATE SCHEMA IF NOT EXISTS " + pgx.Identifier{schema}.Sanitize()); err != nil {
-			return fmt.Errorf("tenancy: create schema %q: %w", schema, err)
+		var exists bool
+		if err := db.QueryRow(
+			`SELECT EXISTS (SELECT 1 FROM information_schema.schemata WHERE schema_name = $1)`,
+			schema).Scan(&exists); err != nil {
+			return fmt.Errorf("tenancy: check schema %q: %w", schema, err)
+		}
+		if !exists {
+			if _, err := db.Exec("CREATE SCHEMA IF NOT EXISTS " + pgx.Identifier{schema}.Sanitize()); err != nil {
+				return fmt.Errorf("tenancy: create schema %q: %w", schema, err)
+			}
 		}
 	}
 
