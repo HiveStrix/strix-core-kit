@@ -85,21 +85,60 @@ func MigrateAll(ctx context.Context, template, schema string, migrations fs.FS) 
 
 	resolver := TemplateResolver{Template: template, Schema: schema}
 	var failures []string
+	var migrated []string
 	for _, slug := range tenants {
 		dsn, err := resolver.Resolve(ctx, slug)
 		if err != nil {
 			failures = append(failures, fmt.Sprintf("%s: %v", slug, err))
 			continue
 		}
+		// Saltar los tenants donde este Core no está activado.
+		//
+		// Crear el schema es ACTIVAR EL MÓDULO, y eso lo decide el provisioner
+		// del Shell, no un hook de despliegue. La versión anterior lo creaba en
+		// toda base de tenant, lo que ponía el schema de un Core en tenants que
+		// nunca lo pidieron — y además exigía privilegios de DDL sobre la base
+		// entera que la credencial del Core, correctamente, no tiene.
+		ok, err := hasSchema(ctx, dsn, schema)
+		if err != nil {
+			failures = append(failures, fmt.Sprintf("%s: %v", slug, err))
+			continue
+		}
+		if !ok {
+			continue
+		}
 		if err := Migrate(dsn, migrations); err != nil {
 			failures = append(failures, fmt.Sprintf("%s: %v", slug, err))
+			continue
 		}
+		migrated = append(migrated, slug)
 	}
 	if len(failures) > 0 {
-		return tenants, fmt.Errorf("tenancy: migraciones fallidas en %d de %d tenants:\n  %s",
+		return migrated, fmt.Errorf("tenancy: migraciones fallidas en %d de %d tenants:\n  %s",
 			len(failures), len(tenants), strings.Join(failures, "\n  "))
 	}
-	return tenants, nil
+	return migrated, nil
+}
+
+// hasSchema reports whether the Core's schema exists in a tenant database.
+//
+// Needs nothing but CONNECT: information_schema is readable by any role, so the
+// check itself never becomes the reason a migration cannot run.
+func hasSchema(ctx context.Context, dsn, schema string) (bool, error) {
+	db, err := sql.Open("pgx", dsn)
+	if err != nil {
+		return false, fmt.Errorf("tenancy: open for schema check: %w", err)
+	}
+	defer db.Close()
+
+	var exists bool
+	err = db.QueryRowContext(ctx,
+		`SELECT EXISTS (SELECT 1 FROM information_schema.schemata WHERE schema_name = $1)`,
+		schema).Scan(&exists)
+	if err != nil {
+		return false, fmt.Errorf("tenancy: check schema %q: %w", schema, err)
+	}
+	return exists, nil
 }
 
 // namePattern describes how a tenant slug becomes a database name.
