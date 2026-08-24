@@ -35,30 +35,59 @@ message CheckPermissionRequest {
   string tenant_id = 1;
   // subject_id is the user id (JWT sub).
   string subject_id = 2;
-  // action being attempted, as "<module>.<verb>" — exactly two segments,
-  // e.g. "invoices.create", "clients.delete".
+  // action being attempted, as "<module>[.<group>...].<verb>", e.g.
+  // "clients.delete" or "expenses.catalog.read".
   //
-  // The PDP splits on the FIRST dot: the head is the entitlement module and
-  // the tail is the verb the baseline policy evaluates. A third segment is not
-  // a namespace, it is swallowed by the verb ("client.delete" is neither a
-  // read nor an admin verb), which silently drops the action into the write
-  // bucket and stops any per-action forbid from matching by name.
+  // The PDP derives the entitlement module from the FIRST segment and the verb
+  // the baseline policy evaluates from the LAST one; anything in between is
+  // free for the Core to organize as it likes. The verb is derived, never
+  // declared: a Core that could name its own verb would be choosing the tier
+  // it is judged at, which is the policy's job.
+  //
+  // Name the action for the tier it belongs to. An action that needs admin
+  // rights should end in a verb that says so ("expenses.taxrate.admin"), not
+  // borrow the name of a write and ask to be treated differently.
   string action = 3;
   string resource_type = 4;
   string resource_id = 5;
   // entitlements claim from the verified JWT (modules the tenant owns).
   repeated string entitlements = 6;
-  // context carries extra attributes for Cedar evaluation.
+  // context carries extra DOMAIN attributes for Cedar evaluation.
   //
-  // These are merged AFTER the attributes the PDP derives itself, so a key
-  // repeated here overwrites the derived one — including "verb", "module",
-  // "tenant_id", "entitlements" and "relations". A caller can therefore lower
-  // the tier its own request is evaluated at. Send domain attributes here, not
-  // the reserved names.
+  // The keys the PDP derives itself — "verb", "module", "tenant_id",
+  // "entitlements" and "relations" — are reserved: sending them is ignored and
+  // logged, never honoured. They are what the baseline policy reads to place a
+  // request in a tier, so a caller that could set them would be grading its
+  // own exam.
   map<string, string> context = 7;
 }
 
 message CheckPermissionResponse {
   bool allowed = 1;
   string reason = 2;
+  // trace records how the decision was reached, one entry per evaluation stage
+  // in the order §8.4 defines them (entitlement -> policy -> ReBAC -> Cedar).
+  //
+  // It exists to make the PDP explainable: `reason` says WHAT decided, the trace
+  // says what was considered on the way there — which module and verb were
+  // derived from the action, whether the entitlement gate passed, how many
+  // policy layers applied, and which relations the subject held.
+  //
+  // It is diagnostic output, never an input: nothing a caller does changes the
+  // decision by reading it. A PEP may ignore it entirely; it is populated on
+  // every response because the cost is a few short strings and the alternative
+  // is a debug flag that is never on when it is needed.
+  repeated DecisionStep trace = 3;
+}
+
+// DecisionStep is one stage of the evaluation, in plain language.
+message DecisionStep {
+  // stage identifies the step: "input", "entitlement", "policy", "rebac" or
+  // "cedar".
+  string stage = 1;
+  // outcome is "pass" (evaluation continues), "allow" or "deny" (terminal), or
+  // "info" (contextual, decides nothing).
+  string outcome = 2;
+  // detail explains this step for a human reading the trace.
+  string detail = 3;
 }
