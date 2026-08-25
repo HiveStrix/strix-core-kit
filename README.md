@@ -31,12 +31,15 @@ El detalle completo está en
 | `pdp` | Cliente de `CheckPermission`, fail-closed y con deadline |
 | `authz` | El gate deny-by-default: entitlement local y decisión delegada al PDP |
 | `tenantctx` | El tenant y el subject verificados, a través del contexto |
+| `tenancy` | Un pool por tenant (LRU, apertura perezosa), resolución de DSN por plantilla, `Base` para repositorios (Conn/InTx/InTxFor), migraciones goose y descubrimiento de tenants por Postgres |
+| `outbox` | El outbox transaccional (`outbox`, `processed_events`) y el relay que lo drena a JetStream |
+| `divisions` | Cliente de plataforma para referencias organizacionales: `ValidateRefs` (batch), `Subtree`, `Path`, con caché del árbol por tenant y stub fail-closed. Cómo lo adopta un core: `Hivestrix-gitops/docs/divisions-adoption-guide.md` |
 | `textnorm` | Normalización de nombres para búsqueda sin `unaccent` |
 | `decimals` | Límites de magnitud y precisión para los números que manda un usuario, antes de que lleguen al cálculo o a la base |
-| `gen/authorization/v1` | Stubs del contrato PEP↔PDP, generados de una sola copia del proto |
+| `gen/authorization/v1` | Stubs del contrato PEP↔PDP, generados de una copia sincronizada del proto |
+| `gen/divisions/v1` | Stubs del contrato de `core-divisions`, ídem |
 
-Pendientes de fases posteriores: la tenancy (pools por tenant, resolución de
-DSN), el relay del outbox, `sanitize` y los helpers de `config`.
+Pendientes de fases posteriores: `sanitize` y los helpers de `config`.
 
 ## Cómo se nombran las acciones
 
@@ -90,12 +93,20 @@ Ojo con los números que van a la base **como string** sin parsearse en Go: ahí
 hay nada que los rechace, y `numeric` de Postgres acepta magnitudes que después
 nadie puede leer de vuelta.
 
-## El proto
+## Los protos
 
-`proto/authorization/v1/authorization.proto` es una copia sincronizada; el
-original vive en `strix-auth`, que es quien implementa el servicio. `make
-check-proto` falla si divergió en algo que no sea el `go_package`, y `make
-sync-proto` la repone. Ese check es justamente la red que no existía antes.
+Los `.proto` bajo `proto/` son **copias sincronizadas**; el original de cada
+uno vive en el repo que implementa el servicio (`strix-auth` para
+`authorization.v1`, `strix-divisions` para `divisions.v1` — la lista es
+`SYNCED` en el Makefile). El contrato empieza en `syntax = `: la prosa
+anterior es la cabecera de cada repo y no participa del diff. `make
+check-proto` falla si alguna copia divergió en algo que no sea el
+`go_package`, y `make sync-proto` las repone.
+
+El guardián de verdad vive en el CI del repo DUEÑO de cada contrato (los
+repos privados pueden leer esta copia pública; al revés no): strix-auth y
+strix-divisions fallan su CI si esta copia queda atrás. La de authorization
+divergió dos semanas sin ese guardián (2026-08); no volvió a pasar.
 
 ## Desarrollo
 
