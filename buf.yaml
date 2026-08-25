@@ -1,9 +1,18 @@
 version: v2
 modules:
   - path: proto
+deps:
+  # divisions.v1 importa google/api/annotations.proto (las rutas REST del
+  # gateway viajan en el contrato aunque el kit solo genere el lado cliente).
+  - buf.build/googleapis/googleapis
 lint:
   use:
     - STANDARD
+  except:
+    # Mismo estilo que los cores: las RPC CRUD del contrato de divisions
+    # devuelven el mensaje de entidad directamente (Division, Level, ...).
+    - RPC_REQUEST_RESPONSE_UNIQUE
+    - RPC_RESPONSE_STANDARD_NAME
 breaking:
   use:
     - FILE

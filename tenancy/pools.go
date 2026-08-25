@@ -82,7 +82,16 @@ func (r TemplateResolver) Resolve(_ context.Context, tenantID string) (string, e
 func withSearchPath(dsn, schema string) (string, error) {
 	u, err := url.Parse(dsn)
 	if err != nil {
-		return "", fmt.Errorf("tenancy: invalid DSN: %w", err)
+		// NUNCA repetir el DSN en el error: lleva la contraseña del rol del
+		// core, y este error viaja a los logs — el relay del outbox lo escribe
+		// en cada barrido. Un *url.Error embebe la URL COMPLETA; se propaga
+		// solo su motivo (fuga real: core-divisions, 2026-08-25 — una
+		// contraseña con % acabó en Loki cada 2 segundos).
+		var uerr *url.Error
+		if errors.As(err, &uerr) {
+			return "", fmt.Errorf("tenancy: invalid DSN: %v", uerr.Err)
+		}
+		return "", errors.New("tenancy: invalid DSN")
 	}
 	q := u.Query()
 	q.Set("options", "-csearch_path="+schema)

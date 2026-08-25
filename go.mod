@@ -9,6 +9,7 @@ require (
 	github.com/pressly/goose/v3 v3.27.3
 	github.com/shopspring/decimal v1.4.0
 	golang.org/x/text v0.40.0
+	google.golang.org/genproto/googleapis/api v0.0.0-20260526163538-3dc84a4a5aaa
 	google.golang.org/grpc v1.83.0
 	google.golang.org/protobuf v1.36.11
 )

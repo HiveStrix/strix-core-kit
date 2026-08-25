@@ -1,0 +1,220 @@
+// COPIA SINCRONIZADA. El original vive en strix-divisions
+// (proto/divisions/v1/divisions.proto) y es su dueño: core-divisions es quien
+// implementa este servicio. Aquí está para que el cliente de plataforma del
+// kit (paquete divisions) comparta un único stub del contrato.
+//
+// Debe ser idéntico al original salvo la línea go_package. Para
+// resincronizarlo: `make sync-proto`, y después `buf generate`. El guardián
+// vive en el CI de strix-divisions (repo privado que puede leer esta copia
+// pública), igual que strix-auth vigila la copia de authorization.proto.
+
+syntax = "proto3";
+
+package divisions.v1;
+
+import "google/api/annotations.proto";
+
+option go_package = "github.com/hs-javierviquez/strix-core-kit/gen/divisions/v1;divisionsv1";
+
+// DivisionsService expone el árbol organizacional del tenant. Las lecturas son
+// claimsOnly (token válido + tenant scoping, sin PDP — el carve-out documentado
+// del estate); las mutaciones de nodos van tras el gate `divisions.write` y las
+// operaciones estructurales tras `divisions.admin` (tenant-admin only por el
+// baseline 00003 de strix-auth; ver erp-action-catalog.md).
+service DivisionsService {
+  // --- Lecturas (claimsOnly) ---
+
+  // GetTree devuelve los niveles y TODOS los nodos del tenant. Es la unidad
+  // de caché del cliente del kit: un árbol son decenas o cientos de nodos,
+  // no millones.
+  rpc GetTree(GetTreeRequest) returns (Tree) {
+    option (google.api.http) = {get: "/v1/divisions:tree"};
+  }
+
+  // GetDivision devuelve un nodo con su path hasta la raíz.
+  rpc GetDivision(GetDivisionRequest) returns (Division) {
+    option (google.api.http) = {get: "/v1/divisions/{id}"};
+  }
+
+  // ListDescendants devuelve los ids del subárbol de un nodo (él incluido).
+  // Es la operación con la que un core consumidor filtra: descendants(X) →
+  // WHERE division_id = ANY($ids).
+  rpc ListDescendants(ListDescendantsRequest) returns (ListDescendantsResponse) {
+    option (google.api.http) = {get: "/v1/divisions/{id}:descendants"};
+  }
+
+  // ValidateRefs valida un lote de referencias. Válida = el nodo existe, no
+  // está borrado, está activo Y toda su cadena de ancestros está activa
+  // (desactivar un nodo cierra su subárbol sin tocar filas hijas).
+  rpc ValidateRefs(ValidateRefsRequest) returns (ValidateRefsResponse) {
+    option (google.api.http) = {post: "/v1/divisions:validate" body: "*"};
+  }
+
+  rpc ListLevels(ListLevelsRequest) returns (ListLevelsResponse) {
+    option (google.api.http) = {get: "/v1/levels"};
+  }
+
+  // --- Mutaciones de nodos (gate divisions.write) ---
+
+  // CreateDivision crea un nodo bajo un padre. El nivel se deriva del padre;
+  // si no existe una capa en depth(padre)+1, la creación falla
+  // (FailedPrecondition): primero se declara la capa, después se puebla.
+  rpc CreateDivision(CreateDivisionRequest) returns (Division) {
+    option (google.api.http) = {post: "/v1/divisions" body: "*"};
+  }
+
+  // UpdateDivision renombra un nodo. `code` no es editable (ver cabecera).
+  rpc UpdateDivision(UpdateDivisionRequest) returns (Division) {
+    option (google.api.http) = {patch: "/v1/divisions/{id}" body: "*"};
+  }
+
+  // --- Operaciones estructurales (gate divisions.admin) ---
+
+  // MoveDivision recuelga un nodo (con su subárbol) bajo otro padre del
+  // MISMO nivel que el padre actual — la invariante estricta no permite
+  // saltos de capa. El nuevo padre no puede pertenecer al subárbol del nodo
+  // movido (ciclo).
+  rpc MoveDivision(MoveDivisionRequest) returns (Division) {
+    option (google.api.http) = {post: "/v1/divisions/{id}:move" body: "*"};
+  }
+
+  // SetDivisionActive activa o desactiva un nodo. La raíz no se desactiva.
+  // Desactivar NO es borrar: el nodo sigue resolviendo para la historia,
+  // solo deja de aceptar referencias nuevas (ValidateRefs lo reporta
+  // inválido, GetDivision/GetTree lo siguen sirviendo).
+  rpc SetDivisionActive(SetDivisionActiveRequest) returns (Division) {
+    option (google.api.http) = {post: "/v1/divisions/{id}:set-active" body: "*"};
+  }
+
+  // AppendLevel añade una capa al fondo de la jerarquía.
+  rpc AppendLevel(AppendLevelRequest) returns (Level) {
+    option (google.api.http) = {post: "/v1/levels" body: "*"};
+  }
+
+  rpc RenameLevel(RenameLevelRequest) returns (Level) {
+    option (google.api.http) = {patch: "/v1/levels/{id}" body: "*"};
+  }
+
+  // InsertLevel inserta una capa intermedia en `depth`, renumerando las
+  // capas inferiores y creando, en la MISMA transacción, un nodo puente del
+  // nivel nuevo bajo cada nodo de depth-1 que tenga hijos (los hijos se
+  // recuelgan del puente). El árbol queda estrictamente válido en todo
+  // momento; la respuesta reporta los puentes para que la UI los muestre y
+  // el admin los renombre o subdivida después.
+  rpc InsertLevel(InsertLevelRequest) returns (InsertLevelResponse) {
+    option (google.api.http) = {post: "/v1/levels:insert" body: "*"};
+  }
+}
+
+// Level es una capa de la jerarquía ("Región", "País", "Sucursal"…),
+// configurable por tenant. depth 1 es la más alta; todo tenant nace con la
+// capa "General" en depth 1 (seed de la migración).
+message Level {
+  int64 id = 1;
+  string name = 2;
+  int32 depth = 3;
+}
+
+// Division es un nodo del árbol. El árbol termina aquí: los objetos de
+// negocio (un gasto, un stock, un cliente) NUNCA son nodos — apuntan a uno.
+message Division {
+  int64 id = 1;
+  // parent_id es 0 solo en la raíz.
+  int64 parent_id = 2;
+  int64 level_id = 3;
+  // code: ^[a-z][a-z0-9-]{0,38}$ · estable, inmutable, para import/export y
+  // para el path desnormalizado que los hechos transaccionales guardan como
+  // snapshot.
+  string code = 4;
+  string name = 5;
+  bool active = 6;
+  // path son los codes desde la raíz hasta este nodo, unidos por "/":
+  // "general/centroamerica/cr/sanjose". Es lo que un core consumidor guarda
+  // como foto histórica en hechos transaccionales.
+  string path = 7;
+}
+
+message GetTreeRequest {}
+
+message Tree {
+  repeated Level levels = 1;
+  repeated Division divisions = 2;
+}
+
+message GetDivisionRequest {
+  int64 id = 1;
+}
+
+message ListDescendantsRequest {
+  int64 id = 1;
+}
+
+message ListDescendantsResponse {
+  repeated int64 ids = 1;
+}
+
+message ValidateRefsRequest {
+  repeated int64 ids = 1;
+}
+
+// RefStatus reporta la validez de UNA referencia. reason viene vacío cuando
+// valid es true; cuando es false explica por qué ("no existe", "inactiva",
+// "ancestro inactivo") para que el consumidor pueda dar un error accionable.
+message RefStatus {
+  int64 id = 1;
+  bool valid = 2;
+  string reason = 3;
+}
+
+message ValidateRefsResponse {
+  repeated RefStatus statuses = 1;
+}
+
+message ListLevelsRequest {}
+
+message ListLevelsResponse {
+  repeated Level levels = 1;
+}
+
+message CreateDivisionRequest {
+  int64 parent_id = 1;
+  string code = 2;
+  string name = 3;
+}
+
+message UpdateDivisionRequest {
+  int64 id = 1;
+  // optional distingue "no enviado" de "enviado vacío" (que es inválido:
+  // un nodo siempre tiene nombre).
+  optional string name = 2;
+}
+
+message MoveDivisionRequest {
+  int64 id = 1;
+  int64 new_parent_id = 2;
+}
+
+message SetDivisionActiveRequest {
+  int64 id = 1;
+  bool active = 2;
+}
+
+message AppendLevelRequest {
+  string name = 1;
+}
+
+message RenameLevelRequest {
+  int64 id = 1;
+  string name = 2;
+}
+
+message InsertLevelRequest {
+  int32 depth = 1;
+  string name = 2;
+}
+
+message InsertLevelResponse {
+  Level level = 1;
+  // bridges son los nodos puente creados (ver el comentario del RPC).
+  repeated Division bridges = 2;
+}
