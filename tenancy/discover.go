@@ -3,11 +3,15 @@ package tenancy
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"net/url"
 	"sort"
 	"strings"
+
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 // Tenants lists the tenant databases that exist for a DSN template.
@@ -86,6 +90,15 @@ func MigrateAll(ctx context.Context, template, schema string, migrations fs.FS) 
 	resolver := TemplateResolver{Template: template, Schema: schema}
 	var failures []string
 	var migrated []string
+	var skipped []string
+	skip := func(slug, reason string) {
+		// Un tenant saltado se DICE. Callarlo deja al operador con un fan-out
+		// que reporta éxito sin explicar sobre cuántas bases actuó, y ese es el
+		// peor resultado posible: indistinguible de uno que no migró nada.
+		slog.InfoContext(ctx, "tenancy: tenant saltado",
+			"tenant", slug, "schema", schema, "motivo", reason)
+		skipped = append(skipped, slug)
+	}
 	for _, slug := range tenants {
 		dsn, err := resolver.Resolve(ctx, slug)
 		if err != nil {
@@ -101,10 +114,15 @@ func MigrateAll(ctx context.Context, template, schema string, migrations fs.FS) 
 		// entera que la credencial del Core, correctamente, no tiene.
 		ok, err := hasSchema(ctx, dsn, schema)
 		if err != nil {
+			if reason := notActivated(err); reason != "" {
+				skip(slug, reason)
+				continue
+			}
 			failures = append(failures, fmt.Sprintf("%s: %v", slug, err))
 			continue
 		}
 		if !ok {
+			skip(slug, "el schema no existe: el módulo no está activado en este tenant")
 			continue
 		}
 		if err := Migrate(dsn, migrations); err != nil {
@@ -113,6 +131,9 @@ func MigrateAll(ctx context.Context, template, schema string, migrations fs.FS) 
 		}
 		migrated = append(migrated, slug)
 	}
+	slog.InfoContext(ctx, "tenancy: fan-out",
+		"schema", schema, "tenants", len(tenants),
+		"migrados", len(migrated), "saltados", len(skipped), "fallidos", len(failures))
 	if len(failures) > 0 {
 		return migrated, fmt.Errorf("tenancy: migraciones fallidas en %d de %d tenants:\n  %s",
 			len(failures), len(tenants), strings.Join(failures, "\n  "))
@@ -120,10 +141,54 @@ func MigrateAll(ctx context.Context, template, schema string, migrations fs.FS) 
 	return migrated, nil
 }
 
+// SQLSTATEs con los que Postgres contesta a una conexión que no debía ocurrir.
+// Se comparan por código y nunca por el texto del mensaje: el texto lo localiza
+// lc_messages y no es contrato.
+const (
+	sqlStateInsufficientPrivilege = "42501"
+	sqlStateInvalidCatalogName    = "3D000"
+)
+
+// notActivated traduce un error de CONEXIÓN a la razón por la que este Core no
+// tiene nada que migrar en ese tenant. Devuelve cadena vacía cuando el error es
+// un fallo de verdad.
+//
+// El permiso de conexión es PRECISAMENTE lo que distingue un tenant que activó
+// el módulo de uno que no: el provisioner concede CONNECT sobre db_tenant_<slug>
+// solo a los roles de los módulos activados, con CONNECT revocado a PUBLIC. Así
+// que el 42501 al conectar es la respuesta de Postgres a "este Core no está en
+// este tenant", con la misma semántica que hasSchema devolviendo false — y sin
+// esta traducción el salto que hasSchema implementa era inalcanzable justo en el
+// caso que existe para cubrir (core-kit#4).
+//
+// Se exige que el PgError venga dentro de un ConnectError: un 42501 nacido de la
+// consulta en sí, y no del handshake, sigue siendo un fallo que merece verse.
+func notActivated(err error) string {
+	var connErr *pgconn.ConnectError
+	if !errors.As(err, &connErr) {
+		return ""
+	}
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) {
+		return ""
+	}
+	switch pgErr.Code {
+	case sqlStateInsufficientPrivilege:
+		return "sin CONNECT sobre la base: el módulo no está activado en este tenant"
+	case sqlStateInvalidCatalogName:
+		// La base pudo borrarse entre el SELECT datname y la conexión.
+		return "la base del tenant ya no existe"
+	default:
+		return ""
+	}
+}
+
 // hasSchema reports whether the Core's schema exists in a tenant database.
 //
-// Needs nothing but CONNECT: information_schema is readable by any role, so the
-// check itself never becomes the reason a migration cannot run.
+// La consulta en sí no necesita más que CONNECT — information_schema lo lee
+// cualquier rol —, pero CONNECT no está dado: es justo el privilegio que el
+// provisioner reserva a los módulos activados. Por eso el error de conexión se
+// clasifica con notActivated en vez de contarse como fallo.
 func hasSchema(ctx context.Context, dsn, schema string) (bool, error) {
 	db, err := sql.Open("pgx", dsn)
 	if err != nil {
