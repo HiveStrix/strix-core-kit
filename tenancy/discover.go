@@ -72,6 +72,48 @@ func Tenants(ctx context.Context, template string) ([]string, error) {
 	return tenants, nil
 }
 
+// TenantsWithSchema lista los tenants donde ESTE Core está activado: los que
+// tienen su schema en la base. Es Tenants() cribado por activación, con la
+// MISMA lectura que MigrateAll —el schema ausente, o un 42501/3D000 al
+// conectar, es "este Core no está en este tenant"—, para que un worker de
+// fondo descubra el mismo conjunto que el fan-out de migraciones ya trata como
+// activo y no abra su conexión de trabajo contra bases donde no tiene nada que
+// hacer.
+//
+// Un tenant no activado se excluye EN SILENCIO: es el estado normal de un
+// descubrimiento que corre en bucle, no un incidente que merezca un log por
+// vuelta —la diferencia con MigrateAll, que lo dice porque un fan-out esporádico
+// quiere saber sobre cuántas bases actuó. Un error REAL de un tenant se loguea y
+// no oculta a los demás: esa base se cae de esta pasada, no el barrido entero.
+func TenantsWithSchema(ctx context.Context, template, schema string) ([]string, error) {
+	tenants, err := Tenants(ctx, template)
+	if err != nil {
+		return nil, err
+	}
+
+	resolver := TemplateResolver{Template: template, Schema: schema}
+	var active []string
+	for _, slug := range tenants {
+		dsn, err := resolver.Resolve(ctx, slug)
+		if err != nil {
+			slog.ErrorContext(ctx, "tenancy: resolver DSN de tenant", "tenant", slug, "error", err)
+			continue
+		}
+		ok, err := hasSchema(ctx, dsn, schema)
+		if err != nil {
+			if notActivated(err) != "" {
+				continue
+			}
+			slog.ErrorContext(ctx, "tenancy: verificar activación de tenant", "tenant", slug, "error", err)
+			continue
+		}
+		if ok {
+			active = append(active, slug)
+		}
+	}
+	return active, nil
+}
+
 // MigrateAll applies a Core's migrations to every tenant database it finds.
 //
 // This is what the PostSync hook runs: one process, one image, no kubectl and
