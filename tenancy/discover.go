@@ -31,6 +31,15 @@ import (
 // all, so the ServiceAccount, the Role and the RoleBinding stop existing rather
 // than being narrowed.
 func Tenants(ctx context.Context, template string) ([]string, error) {
+	return enumerateTenants(ctx, template, false)
+}
+
+// enumerateTenants lista los slugs de tenant que existen para una plantilla de
+// DSN. Con onlyConnectable, la consulta descarta además las bases donde
+// current_user no tiene CONNECT —el privilegio que el provisioner reserva a los
+// módulos activados—, para que quien solo quiere los tenants activos no abra ni
+// una conexión contra los que no lo están (su 42501 no llega al log del motor).
+func enumerateTenants(ctx context.Context, template string, onlyConnectable bool) ([]string, error) {
 	adminDSN, pattern, err := adminAndPattern(template)
 	if err != nil {
 		return nil, err
@@ -42,9 +51,13 @@ func Tenants(ctx context.Context, template string) ([]string, error) {
 	}
 	defer db.Close()
 
-	rows, err := db.QueryContext(ctx,
-		`SELECT datname FROM pg_database WHERE datname LIKE $1 AND datallowconn ORDER BY datname`,
-		pattern.like)
+	query := `SELECT datname FROM pg_database WHERE datname LIKE $1 AND datallowconn`
+	if onlyConnectable {
+		query += ` AND has_database_privilege(current_user, datname, 'CONNECT')`
+	}
+	query += ` ORDER BY datname`
+
+	rows, err := db.QueryContext(ctx, query, pattern.like)
 	if err != nil {
 		return nil, fmt.Errorf("tenancy: list tenant databases: %w", err)
 	}
@@ -72,21 +85,23 @@ func Tenants(ctx context.Context, template string) ([]string, error) {
 	return tenants, nil
 }
 
-// TenantsWithSchema lista los tenants donde ESTE Core está activado: los que
-// tienen su schema en la base. Es Tenants() cribado por activación, con la
-// MISMA lectura que MigrateAll —el schema ausente, o un 42501/3D000 al
-// conectar, es "este Core no está en este tenant"—, para que un worker de
-// fondo descubra el mismo conjunto que el fan-out de migraciones ya trata como
-// activo y no abra su conexión de trabajo contra bases donde no tiene nada que
-// hacer.
+// TenantsWithSchema lista los tenants donde ESTE Core está activado. Criba en
+// DOS pasos, para no tocar siquiera las bases donde el Core no entra:
 //
-// Un tenant no activado se excluye EN SILENCIO: es el estado normal de un
-// descubrimiento que corre en bucle, no un incidente que merezca un log por
-// vuelta —la diferencia con MigrateAll, que lo dice porque un fan-out esporádico
-// quiere saber sobre cuántas bases actuó. Un error REAL de un tenant se loguea y
+//  1. La enumeración descarta las bases sin CONNECT para current_user
+//     (has_database_privilege) —el privilegio que el provisioner concede solo a
+//     los módulos activados—, así que una base sin el módulo ni recibe una
+//     conexión y su 42501 no llega al log del motor.
+//  2. Sobre las que quedan, hasSchema confirma que el schema existe: cubre la
+//     ventana entre conceder CONNECT y migrar el schema (activación en curso) y,
+//     como solo corre sobre tenants ya conectables, no vuelve a martillar nada.
+//
+// La usa un worker de fondo para barrer el mismo conjunto que el fan-out de
+// migraciones trata como activo. Un tenant no activado se excluye EN SILENCIO
+// —es el estado normal de un descubrimiento en bucle—; un error REAL se loguea y
 // no oculta a los demás: esa base se cae de esta pasada, no el barrido entero.
 func TenantsWithSchema(ctx context.Context, template, schema string) ([]string, error) {
-	tenants, err := Tenants(ctx, template)
+	tenants, err := enumerateTenants(ctx, template, true)
 	if err != nil {
 		return nil, err
 	}
