@@ -46,9 +46,13 @@ type AssetType struct {
 	Code        string
 	Name        string
 	Recognition string
-	Outflow     string
-	StockMode   string
-	Active      bool
+	// Outflows es el conjunto ORDENADO de salidas del valor (sale | consumption |
+	// usage | rental): sin repetidos, con al menos una, y la primera es la
+	// principal — la que un consumidor propone como default. Inmutable en el
+	// core, como los otros dos ejes.
+	Outflows  []string
+	StockMode string
+	Active    bool
 }
 
 // AssetTypesClient son las operaciones sobre tipos de activo. Válido =
@@ -369,7 +373,7 @@ func buildAssetTypes(resp *divisionsv1.ListAssetTypesResponse) *atCatalog {
 	for _, a := range resp.GetAssetTypes() {
 		cat.items = append(cat.items, AssetType{
 			ID: a.GetId(), Code: a.GetCode(), Name: a.GetName(),
-			Recognition: a.GetRecognition(), Outflow: a.GetOutflow(), StockMode: a.GetStockMode(),
+			Recognition: a.GetRecognition(), Outflows: a.GetOutflows(), StockMode: a.GetStockMode(),
 			Active: a.GetActive(),
 		})
 	}

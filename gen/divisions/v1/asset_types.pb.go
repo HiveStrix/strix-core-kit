@@ -39,11 +39,13 @@ type AssetType struct {
 	Name  string                 `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
 	// immediate | inventoried | capitalizable — cuándo una compra se vuelve costo.
 	Recognition string `protobuf:"bytes,4,opt,name=recognition,proto3" json:"recognition,omitempty"`
-	// sale | consumption | usage | rental — cómo sale el valor.
-	Outflow string `protobuf:"bytes,5,opt,name=outflow,proto3" json:"outflow,omitempty"`
 	// quantity | unit | none — cómo se cuenta la existencia.
-	StockMode     string `protobuf:"bytes,6,opt,name=stock_mode,json=stockMode,proto3" json:"stock_mode,omitempty"`
-	Active        bool   `protobuf:"varint,7,opt,name=active,proto3" json:"active,omitempty"`
+	StockMode string `protobuf:"bytes,6,opt,name=stock_mode,json=stockMode,proto3" json:"stock_mode,omitempty"`
+	Active    bool   `protobuf:"varint,7,opt,name=active,proto3" json:"active,omitempty"`
+	// sale | consumption | usage | rental — cómo sale el valor. Conjunto
+	// ordenado, sin repetidos, con al menos un elemento; el primero es la
+	// salida principal.
+	Outflows      []string `protobuf:"bytes,8,rep,name=outflows,proto3" json:"outflows,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -106,13 +108,6 @@ func (x *AssetType) GetRecognition() string {
 	return ""
 }
 
-func (x *AssetType) GetOutflow() string {
-	if x != nil {
-		return x.Outflow
-	}
-	return ""
-}
-
 func (x *AssetType) GetStockMode() string {
 	if x != nil {
 		return x.StockMode
@@ -125,6 +120,13 @@ func (x *AssetType) GetActive() bool {
 		return x.Active
 	}
 	return false
+}
+
+func (x *AssetType) GetOutflows() []string {
+	if x != nil {
+		return x.Outflows
+	}
+	return nil
 }
 
 type ListAssetTypesRequest struct {
@@ -216,12 +218,13 @@ func (x *ListAssetTypesResponse) GetAssetTypes() []*AssetType {
 }
 
 type CreateAssetTypeRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Code          string                 `protobuf:"bytes,1,opt,name=code,proto3" json:"code,omitempty"`
-	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
-	Recognition   string                 `protobuf:"bytes,3,opt,name=recognition,proto3" json:"recognition,omitempty"`
-	Outflow       string                 `protobuf:"bytes,4,opt,name=outflow,proto3" json:"outflow,omitempty"`
-	StockMode     string                 `protobuf:"bytes,5,opt,name=stock_mode,json=stockMode,proto3" json:"stock_mode,omitempty"`
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	Code        string                 `protobuf:"bytes,1,opt,name=code,proto3" json:"code,omitempty"`
+	Name        string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	Recognition string                 `protobuf:"bytes,3,opt,name=recognition,proto3" json:"recognition,omitempty"`
+	StockMode   string                 `protobuf:"bytes,5,opt,name=stock_mode,json=stockMode,proto3" json:"stock_mode,omitempty"`
+	// Al menos una salida; la primera es la principal.
+	Outflows      []string `protobuf:"bytes,6,rep,name=outflows,proto3" json:"outflows,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -277,18 +280,18 @@ func (x *CreateAssetTypeRequest) GetRecognition() string {
 	return ""
 }
 
-func (x *CreateAssetTypeRequest) GetOutflow() string {
-	if x != nil {
-		return x.Outflow
-	}
-	return ""
-}
-
 func (x *CreateAssetTypeRequest) GetStockMode() string {
 	if x != nil {
 		return x.StockMode
 	}
 	return ""
+}
+
+func (x *CreateAssetTypeRequest) GetOutflows() []string {
+	if x != nil {
+		return x.Outflows
+	}
+	return nil
 }
 
 type UpdateAssetTypeRequest struct {
@@ -399,28 +402,28 @@ var File_divisions_v1_asset_types_proto protoreflect.FileDescriptor
 
 const file_divisions_v1_asset_types_proto_rawDesc = "" +
 	"\n" +
-	"\x1edivisions/v1/asset_types.proto\x12\fdivisions.v1\x1a\x1cgoogle/api/annotations.proto\"\xb6\x01\n" +
+	"\x1edivisions/v1/asset_types.proto\x12\fdivisions.v1\x1a\x1cgoogle/api/annotations.proto\"\xc7\x01\n" +
 	"\tAssetType\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x12\n" +
 	"\x04code\x18\x02 \x01(\tR\x04code\x12\x12\n" +
 	"\x04name\x18\x03 \x01(\tR\x04name\x12 \n" +
-	"\vrecognition\x18\x04 \x01(\tR\vrecognition\x12\x18\n" +
-	"\aoutflow\x18\x05 \x01(\tR\aoutflow\x12\x1d\n" +
+	"\vrecognition\x18\x04 \x01(\tR\vrecognition\x12\x1d\n" +
 	"\n" +
 	"stock_mode\x18\x06 \x01(\tR\tstockMode\x12\x16\n" +
-	"\x06active\x18\a \x01(\bR\x06active\"B\n" +
+	"\x06active\x18\a \x01(\bR\x06active\x12\x1a\n" +
+	"\boutflows\x18\b \x03(\tR\boutflowsJ\x04\b\x05\x10\x06R\aoutflow\"B\n" +
 	"\x15ListAssetTypesRequest\x12)\n" +
 	"\x10include_inactive\x18\x01 \x01(\bR\x0fincludeInactive\"R\n" +
 	"\x16ListAssetTypesResponse\x128\n" +
 	"\vasset_types\x18\x01 \x03(\v2\x17.divisions.v1.AssetTypeR\n" +
-	"assetTypes\"\x9b\x01\n" +
+	"assetTypes\"\xac\x01\n" +
 	"\x16CreateAssetTypeRequest\x12\x12\n" +
 	"\x04code\x18\x01 \x01(\tR\x04code\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12 \n" +
-	"\vrecognition\x18\x03 \x01(\tR\vrecognition\x12\x18\n" +
-	"\aoutflow\x18\x04 \x01(\tR\aoutflow\x12\x1d\n" +
+	"\vrecognition\x18\x03 \x01(\tR\vrecognition\x12\x1d\n" +
 	"\n" +
-	"stock_mode\x18\x05 \x01(\tR\tstockMode\"J\n" +
+	"stock_mode\x18\x05 \x01(\tR\tstockMode\x12\x1a\n" +
+	"\boutflows\x18\x06 \x03(\tR\boutflowsJ\x04\b\x04\x10\x05R\aoutflow\"J\n" +
 	"\x16UpdateAssetTypeRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x17\n" +
 	"\x04name\x18\x02 \x01(\tH\x00R\x04name\x88\x01\x01B\a\n" +

@@ -55,8 +55,8 @@ func (f *fakeCatalogs) ListAssetTypes(_ context.Context, req *divisionsv1.ListAs
 		return nil, errors.New("el kit debe pedir el catálogo completo")
 	}
 	return &divisionsv1.ListAssetTypesResponse{AssetTypes: []*divisionsv1.AssetType{
-		{Id: 1, Code: "product", Name: "Producto", Recognition: "inventoried", Outflow: "sale", StockMode: "quantity", Active: true},
-		{Id: 5, Code: "machinery", Name: "Maquinaria", Recognition: "capitalizable", Outflow: "usage", StockMode: "unit", Active: false},
+		{Id: 1, Code: "product", Name: "Producto", Recognition: "inventoried", Outflows: []string{"sale"}, StockMode: "quantity", Active: true},
+		{Id: 5, Code: "machinery", Name: "Maquinaria", Recognition: "capitalizable", Outflows: []string{"usage"}, StockMode: "unit", Active: false},
 	}}, nil
 }
 
