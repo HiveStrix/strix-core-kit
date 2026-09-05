@@ -15,7 +15,10 @@ generate:
 # SU CI (el repo privado puede leer este repo público; al revés no).
 SYNCED := \
 	repos/hs-javierviquez/strix-auth/contents/proto/authorization/v1/authorization.proto=proto/authorization/v1/authorization.proto \
-	repos/HiveStrix/strix-divisions/contents/proto/divisions/v1/divisions.proto=proto/divisions/v1/divisions.proto \n	repos/HiveStrix/strix-divisions/contents/proto/divisions/v1/cost_centers.proto=proto/divisions/v1/cost_centers.proto \n	repos/HiveStrix/strix-divisions/contents/proto/divisions/v1/asset_types.proto=proto/divisions/v1/asset_types.proto \n	repos/HiveStrix/strix-clients/contents/proto/clients/v1/clients.proto=proto/clients/v1/clients.proto
+	repos/HiveStrix/strix-divisions/contents/proto/divisions/v1/divisions.proto=proto/divisions/v1/divisions.proto \
+	repos/HiveStrix/strix-divisions/contents/proto/divisions/v1/cost_centers.proto=proto/divisions/v1/cost_centers.proto \
+	repos/HiveStrix/strix-divisions/contents/proto/divisions/v1/asset_types.proto=proto/divisions/v1/asset_types.proto \
+	repos/HiveStrix/strix-clients/contents/proto/clients/v1/clients.proto=proto/clients/v1/clients.proto
 
 # El CONTRATO empieza en `syntax = `: lo anterior es prosa de cada repo (la
 # cabecera local explica por qué la copia existe; la del original, sus
