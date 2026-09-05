@@ -46,11 +46,17 @@ message AssetType {
   string name = 3;
   // immediate | inventoried | capitalizable — cuándo una compra se vuelve costo.
   string recognition = 4;
-  // sale | consumption | usage | rental — cómo sale el valor.
-  string outflow = 5;
+  // Era `string outflow`: un solo valor. Número retirado para que ningún
+  // cliente viejo lea basura en el campo nuevo.
+  reserved 5;
+  reserved "outflow";
   // quantity | unit | none — cómo se cuenta la existencia.
   string stock_mode = 6;
   bool active = 7;
+  // sale | consumption | usage | rental — cómo sale el valor. Conjunto
+  // ordenado, sin repetidos, con al menos un elemento; el primero es la
+  // salida principal.
+  repeated string outflows = 8;
 }
 
 message ListAssetTypesRequest {
@@ -65,8 +71,11 @@ message CreateAssetTypeRequest {
   string code = 1;
   string name = 2;
   string recognition = 3;
-  string outflow = 4;
+  reserved 4;
+  reserved "outflow";
   string stock_mode = 5;
+  // Al menos una salida; la primera es la principal.
+  repeated string outflows = 6;
 }
 
 message UpdateAssetTypeRequest {
