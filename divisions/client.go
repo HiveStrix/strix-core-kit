@@ -100,13 +100,17 @@ const callTimeout = 10 * time.Second
 
 // GRPCClient es el cliente real contra core-divisions.
 type GRPCClient struct {
-	conn *grpc.ClientConn
-	api  divisionsv1.DivisionsServiceClient
-	ttl  time.Duration
-	now  func() time.Time // seam de test
+	conn        *grpc.ClientConn
+	api         divisionsv1.DivisionsServiceClient
+	costCenters divisionsv1.CostCentersServiceClient
+	assetTypes  divisionsv1.AssetTypesServiceClient
+	ttl         time.Duration
+	now         func() time.Time // seam de test
 
-	mu    sync.Mutex
-	cache map[string]snapshot // por tenant — el token del caller viaja, la caché no se comparte entre tenants
+	mu      sync.Mutex
+	cache   map[string]snapshot // por tenant — el token del caller viaja, la caché no se comparte entre tenants
+	ccCache map[string]ccSnapshot
+	atCache map[string]atSnapshot
 }
 
 type snapshot struct {
@@ -129,11 +133,15 @@ func Dial(addr string) (*GRPCClient, error) {
 		return nil, fmt.Errorf("divisions: dial %s: %w", addr, err)
 	}
 	return &GRPCClient{
-		conn:  conn,
-		api:   divisionsv1.NewDivisionsServiceClient(conn),
-		ttl:   DefaultTTL,
-		now:   time.Now,
-		cache: make(map[string]snapshot),
+		conn:        conn,
+		api:         divisionsv1.NewDivisionsServiceClient(conn),
+		costCenters: divisionsv1.NewCostCentersServiceClient(conn),
+		assetTypes:  divisionsv1.NewAssetTypesServiceClient(conn),
+		ttl:         DefaultTTL,
+		now:         time.Now,
+		cache:       make(map[string]snapshot),
+		ccCache:     make(map[string]ccSnapshot),
+		atCache:     make(map[string]atSnapshot),
 	}, nil
 }
 

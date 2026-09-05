@@ -1,0 +1,80 @@
+// COPIA SINCRONIZADA. El original vive en strix-divisions
+// (proto/divisions/v1/asset_types.proto) y es su dueño: core-divisions es quien
+// implementa este servicio. Aquí está para que el cliente de plataforma del
+// kit (paquete divisions) comparta un único stub del contrato.
+//
+// Debe ser idéntico al original salvo la línea go_package. Para
+// resincronizarlo: `make sync-proto`, y después `buf generate`. El guardián
+// vive en el CI de strix-divisions (repo privado que puede leer esta copia
+// pública), igual que strix-auth vigila la copia de authorization.proto.
+
+syntax = "proto3";
+
+package divisions.v1;
+
+import "google/api/annotations.proto";
+
+option go_package = "github.com/hs-javierviquez/strix-core-kit/gen/divisions/v1;divisionsv1";
+
+// AssetTypesService expone los tipos de activo del tenant. Lecturas
+// claimsOnly; crear y renombrar tras `divisions.write`; activar/desactivar
+// tras `divisions.admin`.
+service AssetTypesService {
+  // ListAssetTypes devuelve los tipos del tenant (activos, o todos con
+  // include_inactive). Es la unidad de caché del cliente del kit.
+  rpc ListAssetTypes(ListAssetTypesRequest) returns (ListAssetTypesResponse) {
+    option (google.api.http) = {get: "/v1/asset-types"};
+  }
+
+  rpc CreateAssetType(CreateAssetTypeRequest) returns (AssetType) {
+    option (google.api.http) = {post: "/v1/asset-types" body: "*"};
+  }
+
+  // UpdateAssetType renombra. Los ejes no son editables (ver cabecera).
+  rpc UpdateAssetType(UpdateAssetTypeRequest) returns (AssetType) {
+    option (google.api.http) = {patch: "/v1/asset-types/{id}" body: "*"};
+  }
+
+  rpc SetAssetTypeActive(SetAssetTypeActiveRequest) returns (AssetType) {
+    option (google.api.http) = {post: "/v1/asset-types/{id}:set-active" body: "*"};
+  }
+}
+
+message AssetType {
+  int64 id = 1;
+  string code = 2;
+  string name = 3;
+  // immediate | inventoried | capitalizable — cuándo una compra se vuelve costo.
+  string recognition = 4;
+  // sale | consumption | usage | rental — cómo sale el valor.
+  string outflow = 5;
+  // quantity | unit | none — cómo se cuenta la existencia.
+  string stock_mode = 6;
+  bool active = 7;
+}
+
+message ListAssetTypesRequest {
+  bool include_inactive = 1;
+}
+
+message ListAssetTypesResponse {
+  repeated AssetType asset_types = 1;
+}
+
+message CreateAssetTypeRequest {
+  string code = 1;
+  string name = 2;
+  string recognition = 3;
+  string outflow = 4;
+  string stock_mode = 5;
+}
+
+message UpdateAssetTypeRequest {
+  int64 id = 1;
+  optional string name = 2;
+}
+
+message SetAssetTypeActiveRequest {
+  int64 id = 1;
+  bool active = 2;
+}

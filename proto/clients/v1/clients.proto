@@ -1,0 +1,1069 @@
+// COPIA SINCRONIZADA. El original vive en strix-clients
+// (proto/clients/v1/clients.proto) y es su dueño: core-clients es quien
+// implementa este servicio. Aquí está para que el cliente de plataforma del
+// kit (paquete parties) comparta un único stub del contrato — hoy solo usa
+// LookupSuppliers, pero la copia es del archivo entero: el contrato tiene un
+// dueño y una forma, no una selección por consumidor.
+//
+// Debe ser idéntico al original salvo la línea go_package. Para
+// resincronizarlo: `make sync-proto`, y después `buf generate`. El guardián
+// vive en el CI de strix-clients (repo privado que puede leer esta copia
+// pública), igual que strix-auth vigila la copia de authorization.proto.
+
+syntax = "proto3";
+
+package clients.v1;
+
+import "google/api/annotations.proto";
+
+option go_package = "github.com/hs-javierviquez/strix-core-kit/gen/clients/v1;clientsv1";
+
+// ClientsService is the domain contract of the core-clients service: the
+// client master file (expediente) migrated from the sarionerp monolith.
+// The Shell's BFF calls it over gRPC on behalf of the signed-in user
+// (shell-core §5.1); the same contract is exposed as REST through the
+// grpc-gateway (shell-core §5.3, "dos contratos, no tres mantenimientos").
+//
+// tenant_id and subject identity are never trusted from the request: the PEP
+// interceptor extracts them from the verified access token and the handlers
+// read them from the context (core-reference §A.7).
+//
+// Cross-core surface (consumed by strix-billing when it exists — see
+// integrations.md rows G/O/Q): LookupClients, GetClientTaxProfile,
+// ValidateClientContact.
+service ClientsService {
+  // ── Expediente ────────────────────────────────────────────────
+  rpc CreateClient(CreateClientRequest) returns (Client) {
+    option (google.api.http) = {
+      post: "/v1/clients"
+      body: "*"
+    };
+  }
+
+  rpc ListClients(ListClientsRequest) returns (ListClientsResponse) {
+    option (google.api.http) = {get: "/v1/clients"};
+  }
+
+  rpc GetClient(GetClientRequest) returns (Client) {
+    option (google.api.http) = {get: "/v1/clients/{id}"};
+  }
+
+  rpc UpdateClient(UpdateClientRequest) returns (Client) {
+    option (google.api.http) = {
+      put: "/v1/clients/{id}"
+      body: "*"
+    };
+  }
+
+  rpc DeleteClient(DeleteClientRequest) returns (DeleteClientResponse) {
+    option (google.api.http) = {delete: "/v1/clients/{id}"};
+  }
+
+  // LookupClients resolves a batch of client IDs to their minimal projection
+  // {id, name, code, status}. Cross-module name resolution: this replaces the
+  // monolith's SQL JOINs against the clients table from billing listings
+  // (documents, payments, collections — integrations.md).
+  rpc LookupClients(LookupClientsRequest) returns (LookupClientsResponse) {
+    option (google.api.http) = {get: "/v1/clients:lookup"};
+  }
+
+  // GetClientTaxProfile returns the active custom taxes and the applicable
+  // IVA exemption for a client at a given date. This is the surface billing
+  // calls on every document total computation (integration G — sync gRPC with
+  // short-lived cache on the billing side).
+  rpc GetClientTaxProfile(GetClientTaxProfileRequest) returns (GetClientTaxProfileResponse) {
+    option (google.api.http) = {get: "/v1/clients/{client_id}/tax-profile"};
+  }
+
+  // ValidateClientContact reports whether a contact belongs to the client
+  // within the caller's tenant. Security-relevant FK guard for billing
+  // (integration O — blocks cross-tenant contact injection).
+  rpc ValidateClientContact(ValidateClientContactRequest) returns (ValidateClientContactResponse) {
+    option (google.api.http) = {get: "/v1/clients/{client_id}/contacts/{contact_id}:validate"};
+  }
+
+  // LookupSuppliers resolves a batch of client IDs to their minimal supplier
+  // projection. This is the synchronous lookup a BUYING core (expenses,
+  // inventory) makes AT WRITE TIME when it records a purchase against a
+  // supplier — it never trusts the request body for issues_receipt, since
+  // that flag decides whether the expense's IVA is recoverable. Batch by
+  // design: a purchase document line references suppliers, not one supplier
+  // at a time. Cap of 1000 ids.
+  rpc LookupSuppliers(LookupSuppliersRequest) returns (LookupSuppliersResponse) {
+    option (google.api.http) = {
+      post: "/v1/clients:lookup-suppliers"
+      body: "*"
+    };
+  }
+
+  // ── Importación Excel (preview → confirm) ─────────────────────
+  rpc ImportPreview(ImportPreviewRequest) returns (ImportPreviewResponse) {
+    option (google.api.http) = {
+      post: "/v1/clients/import:preview"
+      body: "*"
+    };
+  }
+
+  rpc ImportConfirm(ImportConfirmRequest) returns (ImportConfirmResponse) {
+    option (google.api.http) = {
+      post: "/v1/clients/import:confirm"
+      body: "*"
+    };
+  }
+
+  // ── Sub-entidades: contactos ──────────────────────────────────
+  rpc ListContacts(ListContactsRequest) returns (ListContactsResponse) {
+    option (google.api.http) = {get: "/v1/clients/{client_id}/contacts"};
+  }
+  rpc CreateContact(CreateContactRequest) returns (Contact) {
+    option (google.api.http) = {
+      post: "/v1/clients/{client_id}/contacts"
+      body: "input"
+    };
+  }
+  rpc UpdateContact(UpdateContactRequest) returns (Contact) {
+    option (google.api.http) = {
+      put: "/v1/clients/{client_id}/contacts/{id}"
+      body: "input"
+    };
+  }
+  rpc DeleteContact(DeleteContactRequest) returns (DeleteSubEntityResponse) {
+    option (google.api.http) = {delete: "/v1/clients/{client_id}/contacts/{id}"};
+  }
+
+  // ── Sub-entidades: actividades económicas ─────────────────────
+  rpc ListActivities(ListActivitiesRequest) returns (ListActivitiesResponse) {
+    option (google.api.http) = {get: "/v1/clients/{client_id}/activities"};
+  }
+  rpc CreateActivity(CreateActivityRequest) returns (Activity) {
+    option (google.api.http) = {
+      post: "/v1/clients/{client_id}/activities"
+      body: "input"
+    };
+  }
+  rpc UpdateActivity(UpdateActivityRequest) returns (Activity) {
+    option (google.api.http) = {
+      put: "/v1/clients/{client_id}/activities/{id}"
+      body: "input"
+    };
+  }
+  rpc DeleteActivity(DeleteActivityRequest) returns (DeleteSubEntityResponse) {
+    option (google.api.http) = {delete: "/v1/clients/{client_id}/activities/{id}"};
+  }
+
+  // ── Sub-entidades: exoneraciones de IVA ───────────────────────
+  rpc ListExemptions(ListExemptionsRequest) returns (ListExemptionsResponse) {
+    option (google.api.http) = {get: "/v1/clients/{client_id}/exemptions"};
+  }
+  rpc CreateExemption(CreateExemptionRequest) returns (Exemption) {
+    option (google.api.http) = {
+      post: "/v1/clients/{client_id}/exemptions"
+      body: "input"
+    };
+  }
+  rpc UpdateExemption(UpdateExemptionRequest) returns (Exemption) {
+    option (google.api.http) = {
+      put: "/v1/clients/{client_id}/exemptions/{id}"
+      body: "input"
+    };
+  }
+  rpc DeleteExemption(DeleteExemptionRequest) returns (DeleteSubEntityResponse) {
+    option (google.api.http) = {delete: "/v1/clients/{client_id}/exemptions/{id}"};
+  }
+
+  // ── Sub-entidades: impuestos personalizados ───────────────────
+  rpc ListCustomTaxes(ListCustomTaxesRequest) returns (ListCustomTaxesResponse) {
+    option (google.api.http) = {get: "/v1/clients/{client_id}/taxes"};
+  }
+  rpc CreateCustomTax(CreateCustomTaxRequest) returns (CustomTax) {
+    option (google.api.http) = {
+      post: "/v1/clients/{client_id}/taxes"
+      body: "input"
+    };
+  }
+  rpc UpdateCustomTax(UpdateCustomTaxRequest) returns (CustomTax) {
+    option (google.api.http) = {
+      put: "/v1/clients/{client_id}/taxes/{id}"
+      body: "input"
+    };
+  }
+  rpc DeleteCustomTax(DeleteCustomTaxRequest) returns (DeleteSubEntityResponse) {
+    option (google.api.http) = {delete: "/v1/clients/{client_id}/taxes/{id}"};
+  }
+
+  // ── Sub-entidades: descuentos ─────────────────────────────────
+  rpc ListDiscounts(ListDiscountsRequest) returns (ListDiscountsResponse) {
+    option (google.api.http) = {get: "/v1/clients/{client_id}/discounts"};
+  }
+  rpc CreateDiscount(CreateDiscountRequest) returns (Discount) {
+    option (google.api.http) = {
+      post: "/v1/clients/{client_id}/discounts"
+      body: "input"
+    };
+  }
+  rpc UpdateDiscount(UpdateDiscountRequest) returns (Discount) {
+    option (google.api.http) = {
+      put: "/v1/clients/{client_id}/discounts/{id}"
+      body: "input"
+    };
+  }
+  rpc DeleteDiscount(DeleteDiscountRequest) returns (DeleteSubEntityResponse) {
+    option (google.api.http) = {delete: "/v1/clients/{client_id}/discounts/{id}"};
+  }
+
+  // ── Sub-entidades: perfil crediticio (1:1) ────────────────────
+  rpc GetCreditProfile(GetCreditProfileRequest) returns (CreditProfile) {
+    option (google.api.http) = {get: "/v1/clients/{client_id}/credit"};
+  }
+  rpc UpsertCreditProfile(UpsertCreditProfileRequest) returns (CreditProfile) {
+    option (google.api.http) = {
+      put: "/v1/clients/{client_id}/credit"
+      body: "input"
+    };
+  }
+
+  // ── Sub-entidad: perfil de proveedor (1:1) ─────────────────────
+  rpc GetSupplierProfile(GetSupplierProfileRequest) returns (SupplierProfile) {
+    option (google.api.http) = {get: "/v1/clients/{client_id}/supplier-profile"};
+  }
+  rpc UpsertSupplierProfile(UpsertSupplierProfileRequest) returns (SupplierProfile) {
+    option (google.api.http) = {
+      put: "/v1/clients/{client_id}/supplier-profile"
+      body: "input"
+    };
+  }
+
+  // ── Sub-entidades: documentos adjuntos ────────────────────────
+  rpc ListAttachedDocuments(ListAttachedDocumentsRequest) returns (ListAttachedDocumentsResponse) {
+    option (google.api.http) = {get: "/v1/clients/{client_id}/documents-attach"};
+  }
+  rpc CreateAttachedDocument(CreateAttachedDocumentRequest) returns (AttachedDocument) {
+    option (google.api.http) = {
+      post: "/v1/clients/{client_id}/documents-attach"
+      body: "input"
+    };
+  }
+  rpc UpdateAttachedDocument(UpdateAttachedDocumentRequest) returns (AttachedDocument) {
+    option (google.api.http) = {
+      put: "/v1/clients/{client_id}/documents-attach/{id}"
+      body: "input"
+    };
+  }
+  rpc DeleteAttachedDocument(DeleteAttachedDocumentRequest) returns (DeleteSubEntityResponse) {
+    option (google.api.http) = {delete: "/v1/clients/{client_id}/documents-attach/{id}"};
+  }
+}
+
+// ─── Expediente ─────────────────────────────────────────────────
+
+// Client is the full projection of the client master record. Dates are
+// RFC 3339 strings; empty means unset.
+message Client {
+  uint32 id = 1;
+  string code = 2;
+  // doc_type: "fisica" | "juridica".
+  string doc_type = 3;
+  string id_number = 4;
+  string name = 5;
+  string alias = 6;
+  // status operativo: "activo" | "inactivo" | "prospecto" | "bloqueado".
+  string status = 7;
+
+  bool is_final_consumer = 8;
+  bool applies_tax = 9;
+  bool block_equipment_return = 10;
+  bool requires_approval = 11;
+  bool requires_po_copy = 12;
+  bool pays_in_advance = 13;
+  bool requires_new_po = 14;
+
+  string market_segment = 15;
+  string zone = 16;
+  string price_class = 17;
+  string source = 18;
+
+  int32 credit_days = 19;
+  double discount_pct = 20;
+  double rental_discount_pct = 21;
+  string iva_type = 22;
+  string rebilling_type = 23;
+  // tax_condition: "gran_contribuyente" | "contribuyente_general" |
+  // "regimen_simplificado" | "no_sujeto" | "exento" | "".
+  string tax_condition = 24;
+
+  string contact_name = 25;
+  string phone = 26;
+  string mobile = 27;
+  string email = 28;
+  string fiscal_email = 29;
+
+  string po_box = 30;
+  string country = 31;
+  string province = 32;
+  string canton = 33;
+  string district = 34;
+  string neighborhood = 35;
+  string address = 36;
+
+  // Vendor assignments are strix-auth subject-ids (strings), not local
+  // entity IDs. Empty = unassigned.
+  string sales_vendor_id = 37;
+  string rental_vendor_id = 38;
+  string service_vendor_id = 39;
+
+  string po_type = 40;
+  string po_description = 41;
+  string ref_doc_code = 42;
+
+  bool mag_registered = 43;
+  bool incopesca_registered = 44;
+  bool aquaculture_registered = 45;
+  string start_date = 46;
+  string expires_at = 47;
+
+  string personeria = 48;
+  string legal_doc_type = 49;
+  string notes = 50;
+
+  // Pipeline comercial — read-only here; owned by the prospects module when
+  // it lands in this repo (integrations.md row H).
+  string lifecycle_status = 51;
+  string assigned_seller_id = 52;
+  bool is_active_customer = 53;
+  bool can_quote = 54;
+  bool can_invoice = 55;
+  string prospect_origin = 56;
+  string approved_by_user_id = 57;
+  string approved_at = 58;
+  string converted_to_provisional_at = 59;
+  string converted_to_active_at = 60;
+
+  string created_at = 61;
+  string updated_at = 62;
+
+  // La division organizacional del expediente (core-divisions). 1 es la raiz,
+  // que existe en toda base de tenant por construccion.
+  int64 division_id = 63;
+
+  // Roles de tercero (Divisions v2): un tercero puede ser cliente, proveedor,
+  // o ambos. Siempre al menos uno de los dos es true — nunca los dos en
+  // false (INV: un tercero necesita al menos un rol).
+  bool is_client = 64;
+  bool is_supplier = 65;
+}
+
+message CreateClientRequest {
+  // code opcional: si viene vacío se autogenera secuencial "CL####".
+  string code = 1;
+  string doc_type = 2;
+  string id_number = 3;
+  string name = 4;
+  string alias = 5;
+  string status = 6;
+
+  bool is_final_consumer = 7;
+  optional bool applies_tax = 8;
+  bool block_equipment_return = 9;
+  bool requires_approval = 10;
+  bool requires_po_copy = 11;
+  bool pays_in_advance = 12;
+  bool requires_new_po = 13;
+
+  string market_segment = 14;
+  string zone = 15;
+  string price_class = 16;
+  string source = 17;
+
+  int32 credit_days = 18;
+  double discount_pct = 19;
+  double rental_discount_pct = 20;
+  string iva_type = 21;
+  string rebilling_type = 22;
+  string tax_condition = 23;
+
+  string contact_name = 24;
+  string phone = 25;
+  string mobile = 26;
+  string email = 27;
+  string fiscal_email = 28;
+
+  string po_box = 29;
+  string country = 30;
+  string province = 31;
+  string canton = 32;
+  string district = 33;
+  string neighborhood = 34;
+  string address = 35;
+
+  string sales_vendor_id = 36;
+  string rental_vendor_id = 37;
+  string service_vendor_id = 38;
+
+  string po_type = 39;
+  string po_description = 40;
+  string ref_doc_code = 41;
+
+  bool mag_registered = 42;
+  bool incopesca_registered = 43;
+  bool aquaculture_registered = 44;
+  string start_date = 45;
+  string expires_at = 46;
+
+  string personeria = 47;
+  string legal_doc_type = 48;
+  string notes = 49;
+
+  // division_id: 0 o ausente = sin clasificar, cuelga de la raiz. Cualquier
+  // otro valor se valida contra core-divisions antes de persistirse.
+  int64 division_id = 50;
+
+  // is_client / is_supplier: si ambos vienen en false, el service asume
+  // is_client = true (compatibilidad: todo lo que no dice nada nace cliente).
+  // Un tercero que nace SOLO proveedor (is_supplier=true, is_client=false)
+  // solo exige name — cédula y doc_type ya eran opcionales.
+  bool is_client = 51;
+  bool is_supplier = 52;
+}
+
+// UpdateClientRequest distingue "campo no enviado" (unset) de "campo
+// explícitamente limpiado" (set a "") vía proto3 optional, igual que el
+// UpdateInput del monolito:
+//   - name / doc_type / status: no-clearable — vacío = mantener.
+//   - optional strings/numéricos/bools: unset = mantener, set = aplicar.
+//   - vendor ids y fechas: semántica PUT — SIEMPRE se aplican (unset = limpiar).
+message UpdateClientRequest {
+  uint32 id = 1;
+
+  string name = 2;
+  string doc_type = 3;
+  string status = 4;
+
+  optional string code = 5;
+  optional string id_number = 6;
+  optional string alias = 7;
+  optional string contact_name = 8;
+  optional string phone = 9;
+  optional string mobile = 10;
+  optional string email = 11;
+  optional string fiscal_email = 12;
+  optional string po_box = 13;
+  optional string country = 14;
+  optional string province = 15;
+  optional string canton = 16;
+  optional string district = 17;
+  optional string neighborhood = 18;
+  optional string address = 19;
+
+  optional string market_segment = 20;
+  optional string zone = 21;
+  optional string price_class = 22;
+  optional string source = 23;
+
+  optional string iva_type = 24;
+  optional string rebilling_type = 25;
+  optional string tax_condition = 26;
+
+  optional string po_type = 27;
+  optional string po_description = 28;
+  optional string ref_doc_code = 29;
+
+  optional string personeria = 30;
+  optional string legal_doc_type = 31;
+  optional string notes = 32;
+
+  optional int32 credit_days = 33;
+  optional double discount_pct = 34;
+  optional double rental_discount_pct = 35;
+
+  optional bool is_final_consumer = 36;
+  optional bool applies_tax = 37;
+  optional bool block_equipment_return = 38;
+  optional bool requires_approval = 39;
+  optional bool requires_po_copy = 40;
+  optional bool pays_in_advance = 41;
+  optional bool requires_new_po = 42;
+  optional bool mag_registered = 43;
+  optional bool incopesca_registered = 44;
+  optional bool aquaculture_registered = 45;
+
+  // PUT semantics: siempre aplicados; unset = quitar asignación / fecha.
+  optional string sales_vendor_id = 46;
+  optional string rental_vendor_id = 47;
+  optional string service_vendor_id = 48;
+  optional string start_date = 49;
+  optional string expires_at = 50;
+
+  // Ausente = no reclasificar.
+  optional int64 division_id = 51;
+
+  // Roles de tercero: unset = mantener. Dejar los dos en false (set) es
+  // ErrNoRole — un tercero necesita al menos un rol.
+  optional bool is_client = 52;
+  optional bool is_supplier = 53;
+}
+
+message GetClientRequest {
+  uint32 id = 1;
+}
+
+message DeleteClientRequest {
+  uint32 id = 1;
+}
+
+message DeleteClientResponse {
+  string message = 1;
+}
+
+message ListClientsRequest {
+  // q: búsqueda por code, name, alias, id_number, email.
+  string q = 1;
+  string status = 2;
+  // include_prospects incluye los clientes cuyo lifecycle sigue en pipeline
+  // de prospección (ocultos por defecto del listado regular).
+  bool include_prospects = 3;
+  int32 page = 4;
+  int32 limit = 5;
+  // sort_by: name | code | id_number | province | canton | status | created.
+  string sort_by = 6;
+  // sort_dir: asc | desc.
+  string sort_dir = 7;
+  // division_id filtra por el SUBARBOL que cuelga de ese nodo, el incluido:
+  // quien filtra por una region espera ver tambien lo de sus sucursales.
+  // 0 o ausente = sin filtro organizacional.
+  int64 division_id = 8;
+  // role: "" (todos) | "client" | "supplier".
+  string role = 9;
+}
+
+message ListClientsResponse {
+  repeated Client clients = 1;
+  int64 total = 2;
+  int32 page = 3;
+  int32 limit = 4;
+}
+
+message LookupClientsRequest {
+  repeated uint32 ids = 1;
+}
+
+message ClientRef {
+  uint32 id = 1;
+  string name = 2;
+  string code = 3;
+  string status = 4;
+}
+
+message LookupClientsResponse {
+  repeated ClientRef clients = 1;
+}
+
+message LookupSuppliersRequest {
+  repeated uint32 ids = 1;
+}
+
+// SupplierRef is the minimal projection a buying core needs at write time.
+// issues_receipt/credit_days come from client_supplier_profiles — a supplier
+// without a profile yet defaults to issues_receipt=true, credit_days=0.
+message SupplierRef {
+  uint32 id = 1;
+  string code = 2;
+  string name = 3;
+  bool active = 4;
+  bool issues_receipt = 5;
+  int32 credit_days = 6;
+}
+
+message LookupSuppliersResponse {
+  repeated SupplierRef suppliers = 1;
+}
+
+// ─── Perfil fiscal (superficie para billing, fila G) ────────────
+
+message GetClientTaxProfileRequest {
+  uint32 client_id = 1;
+  // project_id opcional: prefiere exoneraciones específicas del proyecto.
+  optional uint32 project_id = 2;
+  // at: fecha RFC 3339 para evaluar vigencia; vacío = ahora.
+  string at = 3;
+}
+
+message CustomTaxInfo {
+  uint32 id = 1;
+  string tax_name = 2;
+  string tax_code = 3;
+  double tax_rate = 4;
+}
+
+message ExemptionInfo {
+  uint32 id = 1;
+  string exemption_type = 2;
+  string document_number = 3;
+  string institution_name = 4;
+  double exemption_pct = 5;
+  string valid_from = 6;
+  string valid_until = 7;
+  string article = 8;
+  string subsection = 9;
+}
+
+message GetClientTaxProfileResponse {
+  repeated CustomTaxInfo custom_taxes = 1;
+  // exemption es la exoneración activa y vigente aplicable; ausente si no hay.
+  optional ExemptionInfo exemption = 2;
+}
+
+message ValidateClientContactRequest {
+  uint32 client_id = 1;
+  uint32 contact_id = 2;
+}
+
+message ValidateClientContactResponse {
+  bool valid = 1;
+}
+
+// ─── Importación Excel ──────────────────────────────────────────
+
+message ImportPreviewRequest {
+  // file_name se usa solo para elegir el parser (.xls vs .xlsx).
+  string file_name = 1;
+  // file: contenido del Excel (máx 10 MB). En REST viaja como base64.
+  bytes file = 2;
+}
+
+// ImportRow mirrors the monolith's ImportRowData: normalized strings; the
+// numeric/enum conversion happens at confirm so validation errors stay
+// readable.
+message ImportRow {
+  string name = 1;
+  string alias = 2;
+  string doc_type = 3;
+  string id_number = 4;
+  string code = 5;
+
+  string email = 6;
+  string fiscal_email = 7;
+  string phone = 8;
+  string mobile = 9;
+  string contact_name = 10;
+
+  string country = 11;
+  string province = 12;
+  string canton = 13;
+  string district = 14;
+  string neighborhood = 15;
+  string address = 16;
+  string po_box = 17;
+  string zone = 18;
+
+  string notes = 19;
+  string tax_condition = 20;
+  string credit_days = 21;
+  string status = 22;
+
+  // Vendedores por nombre/email — la resolución a subject-ids de strix-auth
+  // está pendiente de ese core (integrations.md fila I: no-op fail-open).
+  string sales_vendor = 23;
+  string rental_vendor = 24;
+  string service_vendor = 25;
+
+  // Datos de proyecto — el módulo projects aún no vive en este repo
+  // (integrations.md fila I: se ignoran y se reportan como fallo informativo).
+  string project_name = 26;
+  string project_code = 27;
+  string project_operation_mode = 28;
+  string project_province = 29;
+  string project_canton = 30;
+  string project_district = 31;
+  string project_neighborhood = 32;
+  string project_address = 33;
+  string project_route = 34;
+  string project_phone = 35;
+  string project_mobile = 36;
+
+  bool is_project_only = 37;
+}
+
+message ParsedRow {
+  int32 index = 1;
+  ImportRow data = 2;
+  map<string, string> errors = 3;
+  bool valid = 4;
+  // existing_client_id presente cuando el nombre matchea un cliente del
+  // tenant: confirmar actualizará ese cliente en vez de crear uno nuevo.
+  optional uint32 existing_client_id = 5;
+}
+
+message ImportSummary {
+  int32 total = 1;
+  int32 valid = 2;
+  int32 invalid = 3;
+}
+
+message DetectedColumn {
+  string header = 1;
+  string field = 2;
+}
+
+message ImportPreviewResponse {
+  repeated ParsedRow rows = 1;
+  ImportSummary summary = 2;
+  repeated DetectedColumn columns = 3;
+}
+
+message ImportConfirmRequest {
+  repeated ImportRow rows = 1;
+}
+
+message ConfirmFailure {
+  int32 index = 1;
+  string name = 2;
+  string reason = 3;
+}
+
+message ImportConfirmResponse {
+  int32 inserted = 1;
+  int32 updated = 2;
+  int32 projects_inserted = 3;
+  repeated ConfirmFailure failed = 4;
+}
+
+// ─── Sub-entidades ──────────────────────────────────────────────
+
+message DeleteSubEntityResponse {
+  string message = 1;
+}
+
+// Contactos
+message Contact {
+  uint32 id = 1;
+  string name = 2;
+  string id_number = 3;
+  string role = 4;
+  string department = 5;
+  string phone = 6;
+  string mobile = 7;
+  string email = 8;
+  bool is_primary = 9;
+  bool is_active = 10;
+  string notes = 11;
+  string created_at = 12;
+  string updated_at = 13;
+}
+
+// ContactInput: is_primary/is_active opcionales a propósito — omitido =
+// mantener (update) o default seguro (create: active=true, primary=false).
+message ContactInput {
+  string name = 1;
+  string id_number = 2;
+  string role = 3;
+  string department = 4;
+  string phone = 5;
+  string mobile = 6;
+  string email = 7;
+  optional bool is_primary = 8;
+  optional bool is_active = 9;
+  string notes = 10;
+}
+
+message ListContactsRequest {
+  uint32 client_id = 1;
+}
+message ListContactsResponse {
+  repeated Contact contacts = 1;
+}
+message CreateContactRequest {
+  uint32 client_id = 1;
+  ContactInput input = 2;
+}
+message UpdateContactRequest {
+  uint32 client_id = 1;
+  uint32 id = 2;
+  ContactInput input = 3;
+}
+message DeleteContactRequest {
+  uint32 client_id = 1;
+  uint32 id = 2;
+}
+
+// Actividades económicas
+message Activity {
+  uint32 id = 1;
+  string activity_code = 2;
+  string activity_name = 3;
+  bool is_primary = 4;
+  string created_at = 5;
+  string updated_at = 6;
+}
+
+message ActivityInput {
+  string activity_code = 1;
+  string activity_name = 2;
+  optional bool is_primary = 3;
+}
+
+message ListActivitiesRequest {
+  uint32 client_id = 1;
+}
+message ListActivitiesResponse {
+  repeated Activity activities = 1;
+}
+message CreateActivityRequest {
+  uint32 client_id = 1;
+  ActivityInput input = 2;
+}
+message UpdateActivityRequest {
+  uint32 client_id = 1;
+  uint32 id = 2;
+  ActivityInput input = 3;
+}
+message DeleteActivityRequest {
+  uint32 client_id = 1;
+  uint32 id = 2;
+}
+
+// Exoneraciones de IVA
+message Exemption {
+  uint32 id = 1;
+  string exemption_type = 2;
+  string document_number = 3;
+  string institution_name = 4;
+  double exemption_pct = 5;
+  string valid_from = 6;
+  string valid_until = 7;
+  bool is_active = 8;
+  optional uint32 project_id = 9;
+  string article = 10;
+  string subsection = 11;
+  string notes = 12;
+  string created_at = 13;
+  string updated_at = 14;
+}
+
+message ExemptionInput {
+  string exemption_type = 1;
+  string document_number = 2;
+  string institution_name = 3;
+  double exemption_pct = 4;
+  string valid_from = 5;
+  string valid_until = 6;
+  optional bool is_active = 7;
+  optional uint32 project_id = 8;
+  string article = 9;
+  string subsection = 10;
+  string notes = 11;
+}
+
+message ListExemptionsRequest {
+  uint32 client_id = 1;
+}
+message ListExemptionsResponse {
+  repeated Exemption exemptions = 1;
+}
+message CreateExemptionRequest {
+  uint32 client_id = 1;
+  ExemptionInput input = 2;
+}
+message UpdateExemptionRequest {
+  uint32 client_id = 1;
+  uint32 id = 2;
+  ExemptionInput input = 3;
+}
+message DeleteExemptionRequest {
+  uint32 client_id = 1;
+  uint32 id = 2;
+}
+
+// Impuestos personalizados
+message CustomTax {
+  uint32 id = 1;
+  string tax_name = 2;
+  string tax_code = 3;
+  double tax_rate = 4;
+  string description = 5;
+  bool is_active = 6;
+  string created_at = 7;
+  string updated_at = 8;
+}
+
+message CustomTaxInput {
+  string tax_name = 1;
+  string tax_code = 2;
+  double tax_rate = 3;
+  string description = 4;
+  optional bool is_active = 5;
+}
+
+message ListCustomTaxesRequest {
+  uint32 client_id = 1;
+}
+message ListCustomTaxesResponse {
+  repeated CustomTax taxes = 1;
+}
+message CreateCustomTaxRequest {
+  uint32 client_id = 1;
+  CustomTaxInput input = 2;
+}
+message UpdateCustomTaxRequest {
+  uint32 client_id = 1;
+  uint32 id = 2;
+  CustomTaxInput input = 3;
+}
+message DeleteCustomTaxRequest {
+  uint32 client_id = 1;
+  uint32 id = 2;
+}
+
+// Descuentos
+message Discount {
+  uint32 id = 1;
+  string discount_name = 2;
+  string discount_type = 3;
+  double discount_pct = 4;
+  double fixed_amount = 5;
+  string valid_from = 6;
+  string valid_until = 7;
+  string description = 8;
+  bool is_active = 9;
+  string created_at = 10;
+  string updated_at = 11;
+}
+
+message DiscountInput {
+  string discount_name = 1;
+  string discount_type = 2;
+  double discount_pct = 3;
+  double fixed_amount = 4;
+  string valid_from = 5;
+  string valid_until = 6;
+  string description = 7;
+  optional bool is_active = 8;
+}
+
+message ListDiscountsRequest {
+  uint32 client_id = 1;
+}
+message ListDiscountsResponse {
+  repeated Discount discounts = 1;
+}
+message CreateDiscountRequest {
+  uint32 client_id = 1;
+  DiscountInput input = 2;
+}
+message UpdateDiscountRequest {
+  uint32 client_id = 1;
+  uint32 id = 2;
+  DiscountInput input = 3;
+}
+message DeleteDiscountRequest {
+  uint32 client_id = 1;
+  uint32 id = 2;
+}
+
+// Perfil crediticio (1:1 con el cliente)
+message CreditProfile {
+  uint32 id = 1;
+  string representative_name = 2;
+  string representative_id_type = 3;
+  string representative_id_number = 4;
+  string guarantor_name = 5;
+  string guarantor_id_type = 6;
+  string guarantor_id_number = 7;
+  string guarantor_phone = 8;
+  double credit_limit = 9;
+  string credit_notes = 10;
+  string created_at = 11;
+  string updated_at = 12;
+}
+
+message CreditProfileInput {
+  string representative_name = 1;
+  string representative_id_type = 2;
+  string representative_id_number = 3;
+  string guarantor_name = 4;
+  string guarantor_id_type = 5;
+  string guarantor_id_number = 6;
+  string guarantor_phone = 7;
+  double credit_limit = 8;
+  string credit_notes = 9;
+}
+
+message GetCreditProfileRequest {
+  uint32 client_id = 1;
+}
+message UpsertCreditProfileRequest {
+  uint32 client_id = 1;
+  CreditProfileInput input = 2;
+}
+
+// Perfil de proveedor (1:1 con el tercero). Sin id propio a propósito: la
+// tabla client_supplier_profiles usa client_id como llave primaria, no un
+// bigserial aparte — a diferencia de CreditProfile, que sí lo tiene.
+message SupplierProfile {
+  bool issues_receipt = 1;
+  int32 credit_days = 2;
+  string payment_terms = 3;
+  string created_at = 4;
+  string updated_at = 5;
+}
+
+message SupplierProfileInput {
+  bool issues_receipt = 1;
+  int32 credit_days = 2;
+  string payment_terms = 3;
+}
+
+message GetSupplierProfileRequest {
+  uint32 client_id = 1;
+}
+message UpsertSupplierProfileRequest {
+  uint32 client_id = 1;
+  SupplierProfileInput input = 2;
+}
+
+// Documentos adjuntos del expediente
+message AttachedDocument {
+  uint32 id = 1;
+  string document_type = 2;
+  string file_name = 3;
+  string file_url = 4;
+  string description = 5;
+  // uploaded_by es un subject-id de strix-auth; vacío = desconocido.
+  string uploaded_by = 6;
+  bool is_active = 7;
+  string created_at = 8;
+  string updated_at = 9;
+  // warning explica un descarte silencioso del que el usuario debe enterarse:
+  // hoy, una URL rechazada por no usar un esquema web seguro. Vacio = sin
+  // aviso. El descarte en si es la regla de seguridad y no cambia.
+  string warning = 10;
+}
+
+message AttachedDocumentInput {
+  string document_type = 1;
+  string file_name = 2;
+  // file_url: solo se admite http(s) — otros esquemas se descartan
+  // (fail-closed anti-XSS).
+  string file_url = 3;
+  string description = 4;
+  optional bool is_active = 5;
+}
+
+message ListAttachedDocumentsRequest {
+  uint32 client_id = 1;
+}
+message ListAttachedDocumentsResponse {
+  repeated AttachedDocument documents = 1;
+}
+message CreateAttachedDocumentRequest {
+  uint32 client_id = 1;
+  AttachedDocumentInput input = 2;
+}
+message UpdateAttachedDocumentRequest {
+  uint32 client_id = 1;
+  uint32 id = 2;
+  AttachedDocumentInput input = 3;
+}
+message DeleteAttachedDocumentRequest {
+  uint32 client_id = 1;
+  uint32 id = 2;
+}

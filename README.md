@@ -33,11 +33,13 @@ El detalle completo está en
 | `tenantctx` | El tenant y el subject verificados, a través del contexto |
 | `tenancy` | Un pool por tenant (LRU, apertura perezosa), resolución de DSN por plantilla, `Base` para repositorios (Conn/InTx/InTxFor), migraciones goose y descubrimiento de tenants por Postgres |
 | `outbox` | El outbox transaccional (`outbox`, `processed_events`) y el relay que lo drena a JetStream |
-| `divisions` | Cliente de plataforma para referencias organizacionales: `ValidateRefs` (batch), `Subtree`, `Path`, con caché del árbol por tenant y stub fail-closed. Cómo lo adopta un core: `Hivestrix-gitops/docs/divisions-adoption-guide.md` |
+| `divisions` | Cliente de plataforma para el árbol organizacional (`ValidateRefs` batch, `Subtree`, `Path`) y, desde v0.10.0, para los catálogos de plataforma por el mismo `Dial`: `CostCenters()` y `AssetTypes()` (interfaz `Catalogs`), cada uno con su caché por tenant y stub fail-closed. Cómo lo adopta un core: `Hivestrix-gitops/docs/catalogs-adoption-guide.md` |
+| `parties` | Cliente de plataforma para terceros (`core-clients`): `LookupSuppliers` batch, con el token del caller y SIN caché — `active` e `issues_receipt` deben ser frescos al escribir una compra |
 | `textnorm` | Normalización de nombres para búsqueda sin `unaccent` |
 | `decimals` | Límites de magnitud y precisión para los números que manda un usuario, antes de que lleguen al cálculo o a la base |
 | `gen/authorization/v1` | Stubs del contrato PEP↔PDP, generados de una copia sincronizada del proto |
-| `gen/divisions/v1` | Stubs del contrato de `core-divisions`, ídem |
+| `gen/divisions/v1` | Stubs del contrato de `core-divisions` (árbol, centros de costo, tipos de activo), ídem |
+| `gen/clients/v1` | Stubs del contrato de `core-clients`, ídem |
 
 Pendientes de fases posteriores: `sanitize` y los helpers de `config`.
 
@@ -97,15 +99,15 @@ nadie puede leer de vuelta.
 
 Los `.proto` bajo `proto/` son **copias sincronizadas**; el original de cada
 uno vive en el repo que implementa el servicio (`strix-auth` para
-`authorization.v1`, `strix-divisions` para `divisions.v1` — la lista es
-`SYNCED` en el Makefile). El contrato empieza en `syntax = `: la prosa
+`authorization.v1`, `strix-divisions` para los tres archivos de `divisions.v1`,
+`strix-clients` para `clients.v1` — la lista es `SYNCED` en el Makefile). El contrato empieza en `syntax = `: la prosa
 anterior es la cabecera de cada repo y no participa del diff. `make
 check-proto` falla si alguna copia divergió en algo que no sea el
 `go_package`, y `make sync-proto` las repone.
 
 El guardián de verdad vive en el CI del repo DUEÑO de cada contrato (los
-repos privados pueden leer esta copia pública; al revés no): strix-auth y
-strix-divisions fallan su CI si esta copia queda atrás. La de authorization
+repos privados pueden leer esta copia pública; al revés no): strix-auth,
+strix-divisions y strix-clients fallan su CI si esta copia queda atrás. La de authorization
 divergió dos semanas sin ese guardián (2026-08); no volvió a pasar.
 
 ## Desarrollo

@@ -1,0 +1,120 @@
+// COPIA SINCRONIZADA. El original vive en strix-divisions
+// (proto/divisions/v1/cost_centers.proto) y es su dueño: core-divisions es quien
+// implementa este servicio. Aquí está para que el cliente de plataforma del
+// kit (paquete divisions) comparta un único stub del contrato.
+//
+// Debe ser idéntico al original salvo la línea go_package. Para
+// resincronizarlo: `make sync-proto`, y después `buf generate`. El guardián
+// vive en el CI de strix-divisions (repo privado que puede leer esta copia
+// pública), igual que strix-auth vigila la copia de authorization.proto.
+
+syntax = "proto3";
+
+package divisions.v1;
+
+import "divisions/v1/divisions.proto";
+import "google/api/annotations.proto";
+
+option go_package = "github.com/hs-javierviquez/strix-core-kit/gen/divisions/v1;divisionsv1";
+
+// CostCentersService expone los centros de costo del tenant. Lecturas
+// claimsOnly; crear y editar tras `divisions.write`; mover y activar/
+// desactivar tras `divisions.admin` (reescriben un eje que leen todos los
+// cores que costean; erp-action-catalog.md, sección divisions v2).
+service CostCentersService {
+  // GetCostCenterTree devuelve TODOS los centros del tenant con su path. Es
+  // la unidad de caché del cliente del kit.
+  rpc GetCostCenterTree(GetCostCenterTreeRequest) returns (CostCenterTree) {
+    option (google.api.http) = {get: "/v1/cost-centers:tree"};
+  }
+
+  // ValidateCostCenterRefs valida un lote de referencias A HOY: existe,
+  // activo, cadena de ancestros activa y ninguna ventana temporal de la
+  // cadena cerrada.
+  rpc ValidateCostCenterRefs(ValidateCostCenterRefsRequest) returns (ValidateRefsResponse) {
+    option (google.api.http) = {post: "/v1/cost-centers:validate" body: "*"};
+  }
+
+  // CreateCostCenter crea un centro bajo un padre. Sin `division_id` hereda
+  // el ancla del padre.
+  rpc CreateCostCenter(CreateCostCenterRequest) returns (CostCenter) {
+    option (google.api.http) = {post: "/v1/cost-centers" body: "*"};
+  }
+
+  // UpdateCostCenter edita nombre, ancla y ventana temporal (code jamás).
+  // Cambiar el ancla exige que los hijos sigan cabiendo bajo la nueva.
+  rpc UpdateCostCenter(UpdateCostCenterRequest) returns (CostCenter) {
+    option (google.api.http) = {patch: "/v1/cost-centers/{id}" body: "*"};
+  }
+
+  // MoveCostCenter recuelga un centro (con su subárbol) bajo otro padre, sin
+  // ciclos y con su ancla dentro de la del nuevo padre.
+  rpc MoveCostCenter(MoveCostCenterRequest) returns (CostCenter) {
+    option (google.api.http) = {post: "/v1/cost-centers/{id}:move" body: "*"};
+  }
+
+  // SetCostCenterActive activa o desactiva (la raíz nunca). Desactivar no
+  // borra: el subárbol deja de aceptar hechos nuevos y sigue resolviendo la
+  // historia.
+  rpc SetCostCenterActive(SetCostCenterActiveRequest) returns (CostCenter) {
+    option (google.api.http) = {post: "/v1/cost-centers/{id}:set-active" body: "*"};
+  }
+}
+
+message CostCenter {
+  int64 id = 1;
+  // parent_id es 0 solo en la raíz («Empresa», sembrada por la migración).
+  int64 parent_id = 2;
+  // division_id es el ancla organizacional; 1 = raíz = transversal al tenant.
+  int64 division_id = 3;
+  string code = 4;
+  string name = 5;
+  bool temporary = 6;
+  string starts_on = 7;
+  string ends_on = 8;
+  bool active = 9;
+  // path son los codes desde la raíz: "empresa/operacion-ca/cr-cocina".
+  string path = 10;
+}
+
+message GetCostCenterTreeRequest {}
+
+message ValidateCostCenterRefsRequest {
+  repeated int64 ids = 1;
+}
+
+message CostCenterTree {
+  repeated CostCenter cost_centers = 1;
+}
+
+message CreateCostCenterRequest {
+  int64 parent_id = 1;
+  string code = 2;
+  string name = 3;
+  // 0 = heredar el ancla del padre.
+  int64 division_id = 4;
+  bool temporary = 5;
+  string starts_on = 6;
+  string ends_on = 7;
+}
+
+message UpdateCostCenterRequest {
+  int64 id = 1;
+  // optional distingue "no enviado" de "enviado vacío": un nombre vacío es
+  // inválido; una fecha vacía BORRA el límite.
+  optional string name = 2;
+  optional int64 division_id = 3;
+  optional bool temporary = 4;
+  optional string starts_on = 5;
+  optional string ends_on = 6;
+}
+
+message MoveCostCenterRequest {
+  int64 id = 1;
+  int64 new_parent_id = 2;
+}
+
+message SetCostCenterActiveRequest {
+  int64 id = 1;
+  bool active = 2;
+}
