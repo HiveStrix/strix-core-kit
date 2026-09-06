@@ -21,7 +21,7 @@ forma que un `forbid` de la política dejó de coincidir por nombre y cualquier
 `member` podía borrar clientes.
 
 El detalle completo está en
-[gitops#38](https://github.com/hs-javierviquez/Hivestrix-gitops/issues/38).
+[gitops#38](https://github.com/HiveStrix/Hivestrix-gitops/issues/38).
 
 ## Qué hay
 
