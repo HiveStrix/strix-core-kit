@@ -22,12 +22,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/hs-javierviquez/strix-core-kit/auth"
 	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/keepalive"
-	"google.golang.org/grpc/metadata"
 
 	clientsv1 "github.com/hs-javierviquez/strix-core-kit/gen/clients/v1"
 )
@@ -71,11 +71,28 @@ const callTimeout = 10 * time.Second
 type GRPCClient struct {
 	conn *grpc.ClientConn
 	api  clientsv1.ClientsServiceClient
+	// tokens acuña la identidad de ESTE core para las llamadas sin usuario
+	// detrás (un consumidor de eventos); nil = solo reenviar el bearer.
+	tokens *auth.ServiceTokens
+}
+
+// Audience es la audiencia que core-clients acepta en un token de servicio.
+const Audience = "core-clients"
+
+// Option configura Dial.
+type Option func(*GRPCClient)
+
+// WithServiceTokens permite que las llamadas sin bearer de usuario —un
+// consumidor, un job— identifiquen a este core con un token client_credentials
+// del tenant en contexto (security-contract §5.6). El bearer de una persona,
+// cuando lo hay, sigue viajando tal cual: ver auth.Outgoing.
+func WithServiceTokens(tokens *auth.ServiceTokens) Option {
+	return func(c *GRPCClient) { c.tokens = tokens }
 }
 
 // Dial conecta con core-clients (gRPC plaintext intra-cluster, mismo perfil
 // de keepalive que el resto de clientes del estate).
-func Dial(addr string) (*GRPCClient, error) {
+func Dial(addr string, opts ...Option) (*GRPCClient, error) {
 	conn, err := grpc.NewClient(addr,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithKeepaliveParams(keepalive.ClientParameters{
@@ -87,7 +104,11 @@ func Dial(addr string) (*GRPCClient, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parties: dial %s: %w", addr, err)
 	}
-	return &GRPCClient{conn: conn, api: clientsv1.NewClientsServiceClient(conn)}, nil
+	c := &GRPCClient{conn: conn, api: clientsv1.NewClientsServiceClient(conn)}
+	for _, o := range opts {
+		o(c)
+	}
+	return c, nil
 }
 
 // Close libera la conexión.
@@ -108,7 +129,11 @@ func (c *GRPCClient) LookupSuppliers(ctx context.Context, ids []int64) (map[int6
 			req.Ids = append(req.Ids, uint32(id))
 		}
 	}
-	callCtx, cancel := context.WithTimeout(forward(ctx), callTimeout)
+	outCtx, err := auth.Outgoing(ctx, c.tokens, Audience)
+	if err != nil {
+		return nil, fmt.Errorf("parties: %w", err)
+	}
+	callCtx, cancel := context.WithTimeout(outCtx, callTimeout)
 	defer cancel()
 	resp, err := c.api.LookupSuppliers(callCtx, req)
 	if err != nil {
@@ -125,19 +150,4 @@ func (c *GRPCClient) LookupSuppliers(ctx context.Context, ids []int64) (map[int6
 		}
 	}
 	return out, nil
-}
-
-// forward reenvía el bearer del CALLER como metadata saliente. Llamar con
-// identidad de servicio haría que core-clients confíe en la palabra de ESTE
-// core sobre quién pregunta — la confusión que la audiencia por core existe
-// para prevenir.
-func forward(ctx context.Context) context.Context {
-	md, ok := metadata.FromIncomingContext(ctx)
-	if !ok {
-		return ctx
-	}
-	if auth := md.Get("authorization"); len(auth) > 0 {
-		return metadata.AppendToOutgoingContext(ctx, "authorization", auth[0])
-	}
-	return ctx
 }

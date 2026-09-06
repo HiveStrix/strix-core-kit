@@ -226,7 +226,11 @@ func (c *GRPCClient) costCentersFor(ctx context.Context) (*ccTree, error) {
 	}
 	c.mu.Unlock()
 
-	callCtx, cancel := context.WithTimeout(forward(ctx), callTimeout)
+	outCtx, err := c.outgoing(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("divisions: %w", err)
+	}
+	callCtx, cancel := context.WithTimeout(outCtx, callTimeout)
 	defer cancel()
 	resp, err := c.costCenters.GetCostCenterTree(callCtx, &divisionsv1.GetCostCenterTreeRequest{})
 	if err != nil {
@@ -252,7 +256,11 @@ func (c *GRPCClient) assetTypesFor(ctx context.Context) (*atCatalog, error) {
 	}
 	c.mu.Unlock()
 
-	callCtx, cancel := context.WithTimeout(forward(ctx), callTimeout)
+	outCtx, err := c.outgoing(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("divisions: %w", err)
+	}
+	callCtx, cancel := context.WithTimeout(outCtx, callTimeout)
 	defer cancel()
 	resp, err := c.assetTypes.ListAssetTypes(callCtx, &divisionsv1.ListAssetTypesRequest{IncludeInactive: true})
 	if err != nil {

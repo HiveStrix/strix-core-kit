@@ -27,14 +27,14 @@ El detalle completo está en
 
 | Paquete | Qué es |
 |---|---|
-| `auth` | El PEP: verificación local del access token (EdDSA fijado en código, `typ=at+jwt`, `iss`, `aud` any-of, `tenant_id` obligatorio) y el interceptor gRPC que siembra la identidad en el contexto |
+| `auth` | El PEP: verificación local del access token (EdDSA fijado en código, `typ=at+jwt`, `iss`, `aud` any-of, `tenant_id` obligatorio) y el interceptor gRPC que siembra la identidad en el contexto. Desde v0.12.0, también la identidad DE SERVICIO del core (`ServiceTokens`: `client_credentials` contra strix-auth, un token por tenant y audiencia, security-contract §5.6) y `Outgoing(ctx, tokens, aud)`, que reenvía el bearer del usuario cuando lo hay y acuña el de servicio solo cuando no hay nadie detrás de la llamada (un consumidor de eventos, un job) |
 | `pdp` | Cliente de `CheckPermission`, fail-closed y con deadline |
-| `authz` | El gate deny-by-default: entitlement local y decisión delegada al PDP |
+| `authz` | El gate deny-by-default: entitlement local y decisión delegada al PDP; a un principal de servicio (`Claims.IsService`) lo decide el scope (`core.read` / `core.write` por el verbo de la acción, `ScopeFor`), nunca el PDP |
 | `tenantctx` | El tenant y el subject verificados, a través del contexto |
 | `tenancy` | Un pool por tenant (LRU, apertura perezosa), resolución de DSN por plantilla, `Base` para repositorios (Conn/InTx/InTxFor), migraciones goose y descubrimiento de tenants por Postgres |
 | `outbox` | El outbox transaccional (`outbox`, `processed_events`) y el relay que lo drena a JetStream |
 | `divisions` | Cliente de plataforma para el árbol organizacional (`ValidateRefs` batch, `Subtree`, `Path`) y, desde v0.10.0, para los catálogos de plataforma por el mismo `Dial`: `CostCenters()` y `AssetTypes()` (interfaz `Catalogs`), cada uno con su caché por tenant y stub fail-closed. Cómo lo adopta un core: `Hivestrix-gitops/docs/catalogs-adoption-guide.md` |
-| `parties` | Cliente de plataforma para terceros (`core-clients`): `LookupSuppliers` batch, con el token del caller y SIN caché — `active` e `issues_receipt` deben ser frescos al escribir una compra |
+| `parties` | Cliente de plataforma para terceros (`core-clients`): `LookupSuppliers` batch, con el token del caller y SIN caché — `active` e `issues_receipt` deben ser frescos al escribir una compra. `Dial(addr, WithServiceTokens(ts))` para las llamadas sin usuario; ídem en `divisions` |
 | `textnorm` | Normalización de nombres para búsqueda sin `unaccent` |
 | `decimals` | Límites de magnitud y precisión para los números que manda un usuario, antes de que lleguen al cálculo o a la base |
 | `gen/authorization/v1` | Stubs del contrato PEP↔PDP, generados de una copia sincronizada del proto |

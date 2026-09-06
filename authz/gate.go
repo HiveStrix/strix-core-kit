@@ -45,10 +45,14 @@ func New(pdpClient *pdp.Client, module string) *Gate {
 // ends in a verb that says so ("expenses.taxrate.admin") instead of borrowing
 // the name of a write.
 //
-// On scopes: the ecosystem contract lists "entitlement + scopes" for this gate.
-// The scope names are declared when a module is registered in the marketplace;
-// until then, checking against invented names would deny every request. The
-// entitlement and the PDP carry the decision meanwhile.
+// On scopes: for a PERSON the scope names are declared when a module is
+// registered in the marketplace; until then, checking against invented names
+// would deny every request, so the entitlement and the PDP carry the decision.
+// For a MACHINE (a client_credentials token, security-contract §5.6, whose
+// sub is its client_id) the scope IS the decision: core.read for reads,
+// core.write for everything else. A machine has no entitlements and no ReBAC
+// groups, so neither stage applies to it, and which Cores it may reach was
+// fixed by its client's audience allowlist when the token was minted.
 func (g *Gate) Require(ctx context.Context, action, resourceType, resourceID string) error {
 	claims, ok := auth.ClaimsFrom(ctx)
 	if !ok {
@@ -67,6 +71,15 @@ func (g *Gate) Require(ctx context.Context, action, resourceType, resourceID str
 		return status.Errorf(codes.Internal, "authz: action %q does not belong to module %q", action, g.module)
 	}
 
+	if claims.IsService() {
+		need := ScopeFor(action)
+		if !claims.HasScope(need) && !(need == ScopeRead && claims.HasScope(ScopeWrite)) {
+			slog.InfoContext(ctx, "authz: service principal lacks scope",
+				"action", action, "client", claims.ClientID, "scope", claims.Scope, "need", need)
+			return status.Errorf(codes.PermissionDenied, "authz: service principal lacks scope %q", need)
+		}
+		return nil
+	}
 	if !hasEntitlement(claims.Entitlements, g.module) {
 		return status.Errorf(codes.PermissionDenied, "authz: tenant is not entitled to the %q module", g.module)
 	}
@@ -97,6 +110,24 @@ func (g *Gate) Require(ctx context.Context, action, resourceType, resourceID str
 // passing the gate.
 func Claims(ctx context.Context) (*auth.Claims, bool) {
 	return auth.ClaimsFrom(ctx)
+}
+
+// Scopes a machine principal may hold (security-contract §8.4).
+const (
+	ScopeRead  = "core.read"
+	ScopeWrite = "core.write"
+)
+
+// ScopeFor maps an action to the scope a service principal needs for it:
+// the verb is the last segment of the action name, and only reads are
+// reads. Everything else — write, admin, update, delete — is core.write.
+func ScopeFor(action string) string {
+	verb := action[strings.LastIndex(action, ".")+1:]
+	switch verb {
+	case "read", "list", "get", "lookup", "search", "view":
+		return ScopeRead
+	}
+	return ScopeWrite
 }
 
 func hasEntitlement(entitlements []string, key string) bool {

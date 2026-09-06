@@ -35,6 +35,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/hs-javierviquez/strix-core-kit/auth"
 	"strings"
 	"sync"
 	"time"
@@ -42,7 +43,6 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/keepalive"
-	"google.golang.org/grpc/metadata"
 
 	divisionsv1 "github.com/hs-javierviquez/strix-core-kit/gen/divisions/v1"
 	"github.com/hs-javierviquez/strix-core-kit/tenantctx"
@@ -111,6 +111,24 @@ type GRPCClient struct {
 	cache   map[string]snapshot // por tenant — el token del caller viaja, la caché no se comparte entre tenants
 	ccCache map[string]ccSnapshot
 	atCache map[string]atSnapshot
+
+	// tokens acuña la identidad de ESTE core para las llamadas sin usuario
+	// detrás (un consumidor de eventos); nil = solo reenviar el bearer.
+	tokens *auth.ServiceTokens
+}
+
+// Audience es la audiencia que core-divisions acepta en un token de servicio.
+const Audience = "core-divisions"
+
+// Option configura Dial.
+type Option func(*GRPCClient)
+
+// WithServiceTokens permite que las llamadas sin bearer de usuario —un
+// consumidor, un job— identifiquen a este core con un token client_credentials
+// del tenant en contexto (security-contract §5.6). El bearer de una persona,
+// cuando lo hay, sigue viajando tal cual: ver auth.Outgoing.
+func WithServiceTokens(tokens *auth.ServiceTokens) Option {
+	return func(c *GRPCClient) { c.tokens = tokens }
 }
 
 type snapshot struct {
@@ -120,7 +138,7 @@ type snapshot struct {
 
 // Dial conecta con core-divisions (gRPC plaintext intra-cluster, mismo perfil
 // de keepalive que el resto de clientes del estate).
-func Dial(addr string) (*GRPCClient, error) {
+func Dial(addr string, opts ...Option) (*GRPCClient, error) {
 	conn, err := grpc.NewClient(addr,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithKeepaliveParams(keepalive.ClientParameters{
@@ -132,7 +150,7 @@ func Dial(addr string) (*GRPCClient, error) {
 	if err != nil {
 		return nil, fmt.Errorf("divisions: dial %s: %w", addr, err)
 	}
-	return &GRPCClient{
+	c := &GRPCClient{
 		conn:        conn,
 		api:         divisionsv1.NewDivisionsServiceClient(conn),
 		costCenters: divisionsv1.NewCostCentersServiceClient(conn),
@@ -142,7 +160,11 @@ func Dial(addr string) (*GRPCClient, error) {
 		cache:       make(map[string]snapshot),
 		ccCache:     make(map[string]ccSnapshot),
 		atCache:     make(map[string]atSnapshot),
-	}, nil
+	}
+	for _, o := range opts {
+		o(c)
+	}
+	return c, nil
 }
 
 // Close libera la conexión.
@@ -219,7 +241,11 @@ func (c *GRPCClient) treeFor(ctx context.Context) (*tree, error) {
 	}
 	c.mu.Unlock()
 
-	callCtx, cancel := context.WithTimeout(forward(ctx), callTimeout)
+	outCtx, err := c.outgoing(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("divisions: %w", err)
+	}
+	callCtx, cancel := context.WithTimeout(outCtx, callTimeout)
 	defer cancel()
 	resp, err := c.api.GetTree(callCtx, &divisionsv1.GetTreeRequest{})
 	if err != nil {
@@ -233,19 +259,15 @@ func (c *GRPCClient) treeFor(ctx context.Context) (*tree, error) {
 	return t, nil
 }
 
-// forward reenvía el bearer del CALLER como metadata saliente. Llamar con
-// identidad de servicio haría que core-divisions confíe en la palabra de ESTE
-// core sobre quién pregunta — exactamente la confusión que la audiencia por
-// core existe para prevenir.
-func forward(ctx context.Context) context.Context {
-	md, ok := metadata.FromIncomingContext(ctx)
-	if !ok {
-		return ctx
-	}
-	if auth := md.Get("authorization"); len(auth) > 0 {
-		return metadata.AppendToOutgoingContext(ctx, "authorization", auth[0])
-	}
-	return ctx
+// outgoing reenvía el bearer del CALLER como metadata saliente y, solo cuando
+// no hay nadie detrás de la llamada, acuña la identidad de ESTE core (ver
+// auth.Outgoing). Una identidad de servicio nunca reemplaza la de una persona:
+// eso haría que core-divisions confíe en la palabra de este core sobre quién
+// pregunta — exactamente la confusión que la audiencia por core existe para
+// prevenir. Con identidad propia el sujeto ES este core, y divisions lo
+// autoriza por scope.
+func (c *GRPCClient) outgoing(ctx context.Context) (context.Context, error) {
+	return auth.Outgoing(ctx, c.tokens, Audience)
 }
 
 // --- la foto local del árbol ---

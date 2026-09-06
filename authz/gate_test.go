@@ -156,3 +156,50 @@ func TestRequireRejectsAnActionFromAnotherModule(t *testing.T) {
 		t.Errorf("the PDP was called %d times for a foreign action, want 0", calls)
 	}
 }
+
+func TestServicePrincipalIsDecidedByScopeNotByThePDP(t *testing.T) {
+	f := &fakePDP{allowed: false}
+	gate := newGate(t, f, "expenses")
+	machine := func(scope string) context.Context {
+		return auth.ContextWithClaims(context.Background(), &auth.Claims{
+			Subject: "core-costing", ClientID: "core-costing", TenantID: "acme", Scope: scope,
+		})
+	}
+
+	if err := gate.Require(machine("core.read"), "expenses.cost.read", "item_cost", ""); err != nil {
+		t.Fatalf("a service token with core.read must read: %v", err)
+	}
+	if err := gate.Require(machine("core.read"), "expenses.catalog.write", "item", "i-1"); status.Code(err) != codes.PermissionDenied {
+		t.Fatalf("a service token with core.read must not write: %v", err)
+	}
+	if err := gate.Require(machine("core.write"), "expenses.catalog.read", "item", "i-1"); err != nil {
+		t.Fatalf("core.write covers reads too: %v", err)
+	}
+	if err := gate.Require(machine("core.write"), "expenses.catalog.write", "item", "i-1"); err != nil {
+		t.Fatalf("a service token with core.write must write: %v", err)
+	}
+	if err := gate.Require(machine(""), "expenses.cost.read", "item_cost", ""); status.Code(err) != codes.PermissionDenied {
+		t.Fatalf("no scope, no access: %v", err)
+	}
+	if _, calls := f.recorded(); calls != 0 {
+		t.Fatalf("the PDP must never be asked about a machine: %d calls", calls)
+	}
+}
+
+func TestScopeFor(t *testing.T) {
+	cases := map[string]string{
+		"expenses.cost.read":     ScopeRead,
+		"expenses.catalog.list":  ScopeRead,
+		"clients.lookup":         ScopeRead,
+		"inventory.read":         ScopeRead,
+		"inventory.write":        ScopeWrite,
+		"inventory.admin":        ScopeWrite,
+		"maintenance.update":     ScopeWrite,
+		"costing.sellable.write": ScopeWrite,
+	}
+	for action, want := range cases {
+		if got := ScopeFor(action); got != want {
+			t.Errorf("ScopeFor(%q) = %q, want %q", action, got, want)
+		}
+	}
+}
