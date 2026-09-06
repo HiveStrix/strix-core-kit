@@ -14,6 +14,7 @@ package auth
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -36,6 +37,31 @@ type Claims struct {
 	AMR          []string
 	ACR          string
 	Email        string
+	// ClientID is the OAuth client the token was issued to (RFC 9068
+	// `client_id`). On a machine-to-machine token (client_credentials,
+	// security-contract §5.6) it equals Subject: the machine IS the subject.
+	ClientID string
+}
+
+// IsService reports whether the token identifies a machine rather than a
+// person: a client_credentials token has `sub` = `client_id` and carries no
+// user context (no entitlements, no amr/acr). Such a principal is authorized
+// by scope (security-contract §8.4), never by ReBAC groups.
+func (c *Claims) IsService() bool {
+	return c != nil && c.ClientID != "" && c.Subject == c.ClientID
+}
+
+// HasScope reports whether the space-separated `scope` claim contains s.
+func (c *Claims) HasScope(s string) bool {
+	if c == nil {
+		return false
+	}
+	for _, f := range strings.Fields(c.Scope) {
+		if f == s {
+			return true
+		}
+	}
+	return false
 }
 
 // Verifier validates access tokens against the authorization server's JWKS.
@@ -146,6 +172,7 @@ func (v *Verifier) Verify(ctx context.Context, raw string) (*Claims, error) {
 	c.Subject, _ = tok.Subject()
 	_ = tok.Get("tenant_id", &c.TenantID)
 	_ = tok.Get("scope", &c.Scope)
+	_ = tok.Get("client_id", &c.ClientID)
 	_ = tok.Get("acr", &c.ACR)
 	_ = tok.Get("email", &c.Email)
 	c.Entitlements = getStringSlice(tok, "entitlements")
