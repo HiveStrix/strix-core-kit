@@ -59,6 +59,33 @@ service ClientsService {
     option (google.api.http) = {delete: "/v1/clients/{id}"};
   }
 
+  // MergeClients fuses a duplicated client file into the one that survives:
+  // every row hanging off the LOSER is re-pointed at the SURVIVOR, the loser
+  // is retired with the same soft delete DeleteClient uses, and a ledger row
+  // records how many of each kind of thing moved.
+  //
+  // The caller picks the direction. This module never infers which file
+  // survives — not by age, not by row count. A merge is irreversible enough
+  // that guessing is not acceptable, so both ids are required and explicit.
+  //
+  // NOT idempotent, refused instead: the second call naming the same loser
+  // gets FAILED_PRECONDITION naming the merge that already happened and the
+  // file the data went to. See internal/service/merge.go for the argument.
+  //
+  // Gated on the `clients.delete` action, the same one DeleteClient uses.
+  // The platform's baseline policy derives the tier from the LAST segment of
+  // the action name, and the destructive verb family (delete/destroy/purge/
+  // remove/drop/truncate) is tenant-admin only in every module by a global
+  // floor no tenant layer can grant back. A verb of its own ("merge") would
+  // have landed in the write bucket, which ordinary members hold — strictly
+  // looser than the rpc it is destructive as.
+  rpc MergeClients(MergeClientsRequest) returns (MergeClientsResponse) {
+    option (google.api.http) = {
+      post: "/v1/clients/{survivor_id}:merge"
+      body: "*"
+    };
+  }
+
   // LookupClients resolves a batch of client IDs to their minimal projection
   // {id, name, code, status}. Cross-module name resolution: this replaces the
   // monolith's SQL JOINs against the clients table from billing listings
@@ -520,6 +547,39 @@ message DeleteClientRequest {
 
 message DeleteClientResponse {
   string message = 1;
+}
+
+message MergeClientsRequest {
+  // The client file that SURVIVES. Everything moves onto it and it keeps its
+  // own code, id number and field values — a merge moves rows, not fields.
+  uint32 survivor_id = 1;
+  // The client file that is RETIRED. Its rows move; its identity stays
+  // readable (soft delete, never a physical delete) so an audit can explain
+  // where the data went.
+  uint32 loser_id = 2;
+}
+
+message MergeClientsResponse {
+  // Ledger row id (clients.client_merges). The durable handle on this merge.
+  uint64 merge_id = 1;
+  uint32 survivor_id = 2;
+  uint32 loser_id = 3;
+  // Frozen copies taken at merge time. The loser's code is RELEASED when it
+  // retires (the uniqueness index is partial over live rows), so a later
+  // client may hold it — these snapshots, not a live read, are what say who
+  // the loser was.
+  string loser_code = 4;
+  string loser_id_number = 5;
+  string loser_name = 6;
+  // How many LIVE rows moved, per table. Keys suffixed `_retired` carry the
+  // already soft-deleted rows that moved with them.
+  map<string, int32> moved = 7;
+  // Every place the merge could not simply re-point a row: primary flags
+  // demoted, profiles left on the loser, cached balances invalidated, the
+  // survivor's third-party roles widened.
+  map<string, int32> conflicts = 8;
+  // RFC 3339.
+  string merged_at = 9;
 }
 
 message ListClientsRequest {

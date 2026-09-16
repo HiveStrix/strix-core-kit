@@ -1666,6 +1666,182 @@ func (x *DeleteClientResponse) GetMessage() string {
 	return ""
 }
 
+type MergeClientsRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The client file that SURVIVES. Everything moves onto it and it keeps its
+	// own code, id number and field values — a merge moves rows, not fields.
+	SurvivorId uint32 `protobuf:"varint,1,opt,name=survivor_id,json=survivorId,proto3" json:"survivor_id,omitempty"`
+	// The client file that is RETIRED. Its rows move; its identity stays
+	// readable (soft delete, never a physical delete) so an audit can explain
+	// where the data went.
+	LoserId       uint32 `protobuf:"varint,2,opt,name=loser_id,json=loserId,proto3" json:"loser_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MergeClientsRequest) Reset() {
+	*x = MergeClientsRequest{}
+	mi := &file_clients_v1_clients_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MergeClientsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MergeClientsRequest) ProtoMessage() {}
+
+func (x *MergeClientsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_clients_v1_clients_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MergeClientsRequest.ProtoReflect.Descriptor instead.
+func (*MergeClientsRequest) Descriptor() ([]byte, []int) {
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *MergeClientsRequest) GetSurvivorId() uint32 {
+	if x != nil {
+		return x.SurvivorId
+	}
+	return 0
+}
+
+func (x *MergeClientsRequest) GetLoserId() uint32 {
+	if x != nil {
+		return x.LoserId
+	}
+	return 0
+}
+
+type MergeClientsResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Ledger row id (clients.client_merges). The durable handle on this merge.
+	MergeId    uint64 `protobuf:"varint,1,opt,name=merge_id,json=mergeId,proto3" json:"merge_id,omitempty"`
+	SurvivorId uint32 `protobuf:"varint,2,opt,name=survivor_id,json=survivorId,proto3" json:"survivor_id,omitempty"`
+	LoserId    uint32 `protobuf:"varint,3,opt,name=loser_id,json=loserId,proto3" json:"loser_id,omitempty"`
+	// Frozen copies taken at merge time. The loser's code is RELEASED when it
+	// retires (the uniqueness index is partial over live rows), so a later
+	// client may hold it — these snapshots, not a live read, are what say who
+	// the loser was.
+	LoserCode     string `protobuf:"bytes,4,opt,name=loser_code,json=loserCode,proto3" json:"loser_code,omitempty"`
+	LoserIdNumber string `protobuf:"bytes,5,opt,name=loser_id_number,json=loserIdNumber,proto3" json:"loser_id_number,omitempty"`
+	LoserName     string `protobuf:"bytes,6,opt,name=loser_name,json=loserName,proto3" json:"loser_name,omitempty"`
+	// How many LIVE rows moved, per table. Keys suffixed `_retired` carry the
+	// already soft-deleted rows that moved with them.
+	Moved map[string]int32 `protobuf:"bytes,7,rep,name=moved,proto3" json:"moved,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"varint,2,opt,name=value"`
+	// Every place the merge could not simply re-point a row: primary flags
+	// demoted, profiles left on the loser, cached balances invalidated, the
+	// survivor's third-party roles widened.
+	Conflicts map[string]int32 `protobuf:"bytes,8,rep,name=conflicts,proto3" json:"conflicts,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"varint,2,opt,name=value"`
+	// RFC 3339.
+	MergedAt      string `protobuf:"bytes,9,opt,name=merged_at,json=mergedAt,proto3" json:"merged_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MergeClientsResponse) Reset() {
+	*x = MergeClientsResponse{}
+	mi := &file_clients_v1_clients_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MergeClientsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MergeClientsResponse) ProtoMessage() {}
+
+func (x *MergeClientsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_clients_v1_clients_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MergeClientsResponse.ProtoReflect.Descriptor instead.
+func (*MergeClientsResponse) Descriptor() ([]byte, []int) {
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *MergeClientsResponse) GetMergeId() uint64 {
+	if x != nil {
+		return x.MergeId
+	}
+	return 0
+}
+
+func (x *MergeClientsResponse) GetSurvivorId() uint32 {
+	if x != nil {
+		return x.SurvivorId
+	}
+	return 0
+}
+
+func (x *MergeClientsResponse) GetLoserId() uint32 {
+	if x != nil {
+		return x.LoserId
+	}
+	return 0
+}
+
+func (x *MergeClientsResponse) GetLoserCode() string {
+	if x != nil {
+		return x.LoserCode
+	}
+	return ""
+}
+
+func (x *MergeClientsResponse) GetLoserIdNumber() string {
+	if x != nil {
+		return x.LoserIdNumber
+	}
+	return ""
+}
+
+func (x *MergeClientsResponse) GetLoserName() string {
+	if x != nil {
+		return x.LoserName
+	}
+	return ""
+}
+
+func (x *MergeClientsResponse) GetMoved() map[string]int32 {
+	if x != nil {
+		return x.Moved
+	}
+	return nil
+}
+
+func (x *MergeClientsResponse) GetConflicts() map[string]int32 {
+	if x != nil {
+		return x.Conflicts
+	}
+	return nil
+}
+
+func (x *MergeClientsResponse) GetMergedAt() string {
+	if x != nil {
+		return x.MergedAt
+	}
+	return ""
+}
+
 type ListClientsRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// q: búsqueda por code, name, alias, id_number, email.
@@ -1692,7 +1868,7 @@ type ListClientsRequest struct {
 
 func (x *ListClientsRequest) Reset() {
 	*x = ListClientsRequest{}
-	mi := &file_clients_v1_clients_proto_msgTypes[6]
+	mi := &file_clients_v1_clients_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1704,7 +1880,7 @@ func (x *ListClientsRequest) String() string {
 func (*ListClientsRequest) ProtoMessage() {}
 
 func (x *ListClientsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[6]
+	mi := &file_clients_v1_clients_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1717,7 +1893,7 @@ func (x *ListClientsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListClientsRequest.ProtoReflect.Descriptor instead.
 func (*ListClientsRequest) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{6}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *ListClientsRequest) GetQ() string {
@@ -1795,7 +1971,7 @@ type ListClientsResponse struct {
 
 func (x *ListClientsResponse) Reset() {
 	*x = ListClientsResponse{}
-	mi := &file_clients_v1_clients_proto_msgTypes[7]
+	mi := &file_clients_v1_clients_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1807,7 +1983,7 @@ func (x *ListClientsResponse) String() string {
 func (*ListClientsResponse) ProtoMessage() {}
 
 func (x *ListClientsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[7]
+	mi := &file_clients_v1_clients_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1820,7 +1996,7 @@ func (x *ListClientsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListClientsResponse.ProtoReflect.Descriptor instead.
 func (*ListClientsResponse) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{7}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *ListClientsResponse) GetClients() []*Client {
@@ -1860,7 +2036,7 @@ type LookupClientsRequest struct {
 
 func (x *LookupClientsRequest) Reset() {
 	*x = LookupClientsRequest{}
-	mi := &file_clients_v1_clients_proto_msgTypes[8]
+	mi := &file_clients_v1_clients_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1872,7 +2048,7 @@ func (x *LookupClientsRequest) String() string {
 func (*LookupClientsRequest) ProtoMessage() {}
 
 func (x *LookupClientsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[8]
+	mi := &file_clients_v1_clients_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1885,7 +2061,7 @@ func (x *LookupClientsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LookupClientsRequest.ProtoReflect.Descriptor instead.
 func (*LookupClientsRequest) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{8}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *LookupClientsRequest) GetIds() []uint32 {
@@ -1907,7 +2083,7 @@ type ClientRef struct {
 
 func (x *ClientRef) Reset() {
 	*x = ClientRef{}
-	mi := &file_clients_v1_clients_proto_msgTypes[9]
+	mi := &file_clients_v1_clients_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1919,7 +2095,7 @@ func (x *ClientRef) String() string {
 func (*ClientRef) ProtoMessage() {}
 
 func (x *ClientRef) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[9]
+	mi := &file_clients_v1_clients_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1932,7 +2108,7 @@ func (x *ClientRef) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ClientRef.ProtoReflect.Descriptor instead.
 func (*ClientRef) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{9}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *ClientRef) GetId() uint32 {
@@ -1972,7 +2148,7 @@ type LookupClientsResponse struct {
 
 func (x *LookupClientsResponse) Reset() {
 	*x = LookupClientsResponse{}
-	mi := &file_clients_v1_clients_proto_msgTypes[10]
+	mi := &file_clients_v1_clients_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1984,7 +2160,7 @@ func (x *LookupClientsResponse) String() string {
 func (*LookupClientsResponse) ProtoMessage() {}
 
 func (x *LookupClientsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[10]
+	mi := &file_clients_v1_clients_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1997,7 +2173,7 @@ func (x *LookupClientsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LookupClientsResponse.ProtoReflect.Descriptor instead.
 func (*LookupClientsResponse) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{10}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *LookupClientsResponse) GetClients() []*ClientRef {
@@ -2016,7 +2192,7 @@ type LookupSuppliersRequest struct {
 
 func (x *LookupSuppliersRequest) Reset() {
 	*x = LookupSuppliersRequest{}
-	mi := &file_clients_v1_clients_proto_msgTypes[11]
+	mi := &file_clients_v1_clients_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2028,7 +2204,7 @@ func (x *LookupSuppliersRequest) String() string {
 func (*LookupSuppliersRequest) ProtoMessage() {}
 
 func (x *LookupSuppliersRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[11]
+	mi := &file_clients_v1_clients_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2041,7 +2217,7 @@ func (x *LookupSuppliersRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LookupSuppliersRequest.ProtoReflect.Descriptor instead.
 func (*LookupSuppliersRequest) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{11}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *LookupSuppliersRequest) GetIds() []uint32 {
@@ -2068,7 +2244,7 @@ type SupplierRef struct {
 
 func (x *SupplierRef) Reset() {
 	*x = SupplierRef{}
-	mi := &file_clients_v1_clients_proto_msgTypes[12]
+	mi := &file_clients_v1_clients_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2080,7 +2256,7 @@ func (x *SupplierRef) String() string {
 func (*SupplierRef) ProtoMessage() {}
 
 func (x *SupplierRef) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[12]
+	mi := &file_clients_v1_clients_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2093,7 +2269,7 @@ func (x *SupplierRef) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SupplierRef.ProtoReflect.Descriptor instead.
 func (*SupplierRef) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{12}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *SupplierRef) GetId() uint32 {
@@ -2147,7 +2323,7 @@ type LookupSuppliersResponse struct {
 
 func (x *LookupSuppliersResponse) Reset() {
 	*x = LookupSuppliersResponse{}
-	mi := &file_clients_v1_clients_proto_msgTypes[13]
+	mi := &file_clients_v1_clients_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2159,7 +2335,7 @@ func (x *LookupSuppliersResponse) String() string {
 func (*LookupSuppliersResponse) ProtoMessage() {}
 
 func (x *LookupSuppliersResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[13]
+	mi := &file_clients_v1_clients_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2172,7 +2348,7 @@ func (x *LookupSuppliersResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LookupSuppliersResponse.ProtoReflect.Descriptor instead.
 func (*LookupSuppliersResponse) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{13}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *LookupSuppliersResponse) GetSuppliers() []*SupplierRef {
@@ -2195,7 +2371,7 @@ type GetClientTaxProfileRequest struct {
 
 func (x *GetClientTaxProfileRequest) Reset() {
 	*x = GetClientTaxProfileRequest{}
-	mi := &file_clients_v1_clients_proto_msgTypes[14]
+	mi := &file_clients_v1_clients_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2207,7 +2383,7 @@ func (x *GetClientTaxProfileRequest) String() string {
 func (*GetClientTaxProfileRequest) ProtoMessage() {}
 
 func (x *GetClientTaxProfileRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[14]
+	mi := &file_clients_v1_clients_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2220,7 +2396,7 @@ func (x *GetClientTaxProfileRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetClientTaxProfileRequest.ProtoReflect.Descriptor instead.
 func (*GetClientTaxProfileRequest) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{14}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *GetClientTaxProfileRequest) GetClientId() uint32 {
@@ -2256,7 +2432,7 @@ type CustomTaxInfo struct {
 
 func (x *CustomTaxInfo) Reset() {
 	*x = CustomTaxInfo{}
-	mi := &file_clients_v1_clients_proto_msgTypes[15]
+	mi := &file_clients_v1_clients_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2268,7 +2444,7 @@ func (x *CustomTaxInfo) String() string {
 func (*CustomTaxInfo) ProtoMessage() {}
 
 func (x *CustomTaxInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[15]
+	mi := &file_clients_v1_clients_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2281,7 +2457,7 @@ func (x *CustomTaxInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CustomTaxInfo.ProtoReflect.Descriptor instead.
 func (*CustomTaxInfo) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{15}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *CustomTaxInfo) GetId() uint32 {
@@ -2329,7 +2505,7 @@ type ExemptionInfo struct {
 
 func (x *ExemptionInfo) Reset() {
 	*x = ExemptionInfo{}
-	mi := &file_clients_v1_clients_proto_msgTypes[16]
+	mi := &file_clients_v1_clients_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2341,7 +2517,7 @@ func (x *ExemptionInfo) String() string {
 func (*ExemptionInfo) ProtoMessage() {}
 
 func (x *ExemptionInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[16]
+	mi := &file_clients_v1_clients_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2354,7 +2530,7 @@ func (x *ExemptionInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExemptionInfo.ProtoReflect.Descriptor instead.
 func (*ExemptionInfo) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{16}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *ExemptionInfo) GetId() uint32 {
@@ -2431,7 +2607,7 @@ type GetClientTaxProfileResponse struct {
 
 func (x *GetClientTaxProfileResponse) Reset() {
 	*x = GetClientTaxProfileResponse{}
-	mi := &file_clients_v1_clients_proto_msgTypes[17]
+	mi := &file_clients_v1_clients_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2443,7 +2619,7 @@ func (x *GetClientTaxProfileResponse) String() string {
 func (*GetClientTaxProfileResponse) ProtoMessage() {}
 
 func (x *GetClientTaxProfileResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[17]
+	mi := &file_clients_v1_clients_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2456,7 +2632,7 @@ func (x *GetClientTaxProfileResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetClientTaxProfileResponse.ProtoReflect.Descriptor instead.
 func (*GetClientTaxProfileResponse) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{17}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *GetClientTaxProfileResponse) GetCustomTaxes() []*CustomTaxInfo {
@@ -2483,7 +2659,7 @@ type ValidateClientContactRequest struct {
 
 func (x *ValidateClientContactRequest) Reset() {
 	*x = ValidateClientContactRequest{}
-	mi := &file_clients_v1_clients_proto_msgTypes[18]
+	mi := &file_clients_v1_clients_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2495,7 +2671,7 @@ func (x *ValidateClientContactRequest) String() string {
 func (*ValidateClientContactRequest) ProtoMessage() {}
 
 func (x *ValidateClientContactRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[18]
+	mi := &file_clients_v1_clients_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2508,7 +2684,7 @@ func (x *ValidateClientContactRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ValidateClientContactRequest.ProtoReflect.Descriptor instead.
 func (*ValidateClientContactRequest) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{18}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *ValidateClientContactRequest) GetClientId() uint32 {
@@ -2534,7 +2710,7 @@ type ValidateClientContactResponse struct {
 
 func (x *ValidateClientContactResponse) Reset() {
 	*x = ValidateClientContactResponse{}
-	mi := &file_clients_v1_clients_proto_msgTypes[19]
+	mi := &file_clients_v1_clients_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2546,7 +2722,7 @@ func (x *ValidateClientContactResponse) String() string {
 func (*ValidateClientContactResponse) ProtoMessage() {}
 
 func (x *ValidateClientContactResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[19]
+	mi := &file_clients_v1_clients_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2559,7 +2735,7 @@ func (x *ValidateClientContactResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ValidateClientContactResponse.ProtoReflect.Descriptor instead.
 func (*ValidateClientContactResponse) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{19}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *ValidateClientContactResponse) GetValid() bool {
@@ -2581,7 +2757,7 @@ type ImportPreviewRequest struct {
 
 func (x *ImportPreviewRequest) Reset() {
 	*x = ImportPreviewRequest{}
-	mi := &file_clients_v1_clients_proto_msgTypes[20]
+	mi := &file_clients_v1_clients_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2593,7 +2769,7 @@ func (x *ImportPreviewRequest) String() string {
 func (*ImportPreviewRequest) ProtoMessage() {}
 
 func (x *ImportPreviewRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[20]
+	mi := &file_clients_v1_clients_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2606,7 +2782,7 @@ func (x *ImportPreviewRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ImportPreviewRequest.ProtoReflect.Descriptor instead.
 func (*ImportPreviewRequest) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{20}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *ImportPreviewRequest) GetFileName() string {
@@ -2675,7 +2851,7 @@ type ImportRow struct {
 
 func (x *ImportRow) Reset() {
 	*x = ImportRow{}
-	mi := &file_clients_v1_clients_proto_msgTypes[21]
+	mi := &file_clients_v1_clients_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2687,7 +2863,7 @@ func (x *ImportRow) String() string {
 func (*ImportRow) ProtoMessage() {}
 
 func (x *ImportRow) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[21]
+	mi := &file_clients_v1_clients_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2700,7 +2876,7 @@ func (x *ImportRow) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ImportRow.ProtoReflect.Descriptor instead.
 func (*ImportRow) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{21}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *ImportRow) GetName() string {
@@ -2977,7 +3153,7 @@ type ParsedRow struct {
 
 func (x *ParsedRow) Reset() {
 	*x = ParsedRow{}
-	mi := &file_clients_v1_clients_proto_msgTypes[22]
+	mi := &file_clients_v1_clients_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2989,7 +3165,7 @@ func (x *ParsedRow) String() string {
 func (*ParsedRow) ProtoMessage() {}
 
 func (x *ParsedRow) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[22]
+	mi := &file_clients_v1_clients_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3002,7 +3178,7 @@ func (x *ParsedRow) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ParsedRow.ProtoReflect.Descriptor instead.
 func (*ParsedRow) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{22}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *ParsedRow) GetIndex() int32 {
@@ -3051,7 +3227,7 @@ type ImportSummary struct {
 
 func (x *ImportSummary) Reset() {
 	*x = ImportSummary{}
-	mi := &file_clients_v1_clients_proto_msgTypes[23]
+	mi := &file_clients_v1_clients_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3063,7 +3239,7 @@ func (x *ImportSummary) String() string {
 func (*ImportSummary) ProtoMessage() {}
 
 func (x *ImportSummary) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[23]
+	mi := &file_clients_v1_clients_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3076,7 +3252,7 @@ func (x *ImportSummary) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ImportSummary.ProtoReflect.Descriptor instead.
 func (*ImportSummary) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{23}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *ImportSummary) GetTotal() int32 {
@@ -3110,7 +3286,7 @@ type DetectedColumn struct {
 
 func (x *DetectedColumn) Reset() {
 	*x = DetectedColumn{}
-	mi := &file_clients_v1_clients_proto_msgTypes[24]
+	mi := &file_clients_v1_clients_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3122,7 +3298,7 @@ func (x *DetectedColumn) String() string {
 func (*DetectedColumn) ProtoMessage() {}
 
 func (x *DetectedColumn) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[24]
+	mi := &file_clients_v1_clients_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3135,7 +3311,7 @@ func (x *DetectedColumn) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DetectedColumn.ProtoReflect.Descriptor instead.
 func (*DetectedColumn) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{24}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *DetectedColumn) GetHeader() string {
@@ -3163,7 +3339,7 @@ type ImportPreviewResponse struct {
 
 func (x *ImportPreviewResponse) Reset() {
 	*x = ImportPreviewResponse{}
-	mi := &file_clients_v1_clients_proto_msgTypes[25]
+	mi := &file_clients_v1_clients_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3175,7 +3351,7 @@ func (x *ImportPreviewResponse) String() string {
 func (*ImportPreviewResponse) ProtoMessage() {}
 
 func (x *ImportPreviewResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[25]
+	mi := &file_clients_v1_clients_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3188,7 +3364,7 @@ func (x *ImportPreviewResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ImportPreviewResponse.ProtoReflect.Descriptor instead.
 func (*ImportPreviewResponse) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{25}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *ImportPreviewResponse) GetRows() []*ParsedRow {
@@ -3221,7 +3397,7 @@ type ImportConfirmRequest struct {
 
 func (x *ImportConfirmRequest) Reset() {
 	*x = ImportConfirmRequest{}
-	mi := &file_clients_v1_clients_proto_msgTypes[26]
+	mi := &file_clients_v1_clients_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3233,7 +3409,7 @@ func (x *ImportConfirmRequest) String() string {
 func (*ImportConfirmRequest) ProtoMessage() {}
 
 func (x *ImportConfirmRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[26]
+	mi := &file_clients_v1_clients_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3246,7 +3422,7 @@ func (x *ImportConfirmRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ImportConfirmRequest.ProtoReflect.Descriptor instead.
 func (*ImportConfirmRequest) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{26}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *ImportConfirmRequest) GetRows() []*ImportRow {
@@ -3267,7 +3443,7 @@ type ConfirmFailure struct {
 
 func (x *ConfirmFailure) Reset() {
 	*x = ConfirmFailure{}
-	mi := &file_clients_v1_clients_proto_msgTypes[27]
+	mi := &file_clients_v1_clients_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3279,7 +3455,7 @@ func (x *ConfirmFailure) String() string {
 func (*ConfirmFailure) ProtoMessage() {}
 
 func (x *ConfirmFailure) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[27]
+	mi := &file_clients_v1_clients_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3292,7 +3468,7 @@ func (x *ConfirmFailure) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConfirmFailure.ProtoReflect.Descriptor instead.
 func (*ConfirmFailure) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{27}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *ConfirmFailure) GetIndex() int32 {
@@ -3328,7 +3504,7 @@ type ImportConfirmResponse struct {
 
 func (x *ImportConfirmResponse) Reset() {
 	*x = ImportConfirmResponse{}
-	mi := &file_clients_v1_clients_proto_msgTypes[28]
+	mi := &file_clients_v1_clients_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3340,7 +3516,7 @@ func (x *ImportConfirmResponse) String() string {
 func (*ImportConfirmResponse) ProtoMessage() {}
 
 func (x *ImportConfirmResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[28]
+	mi := &file_clients_v1_clients_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3353,7 +3529,7 @@ func (x *ImportConfirmResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ImportConfirmResponse.ProtoReflect.Descriptor instead.
 func (*ImportConfirmResponse) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{28}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *ImportConfirmResponse) GetInserted() int32 {
@@ -3393,7 +3569,7 @@ type DeleteSubEntityResponse struct {
 
 func (x *DeleteSubEntityResponse) Reset() {
 	*x = DeleteSubEntityResponse{}
-	mi := &file_clients_v1_clients_proto_msgTypes[29]
+	mi := &file_clients_v1_clients_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3405,7 +3581,7 @@ func (x *DeleteSubEntityResponse) String() string {
 func (*DeleteSubEntityResponse) ProtoMessage() {}
 
 func (x *DeleteSubEntityResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[29]
+	mi := &file_clients_v1_clients_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3418,7 +3594,7 @@ func (x *DeleteSubEntityResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteSubEntityResponse.ProtoReflect.Descriptor instead.
 func (*DeleteSubEntityResponse) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{29}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *DeleteSubEntityResponse) GetMessage() string {
@@ -3450,7 +3626,7 @@ type Contact struct {
 
 func (x *Contact) Reset() {
 	*x = Contact{}
-	mi := &file_clients_v1_clients_proto_msgTypes[30]
+	mi := &file_clients_v1_clients_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3462,7 +3638,7 @@ func (x *Contact) String() string {
 func (*Contact) ProtoMessage() {}
 
 func (x *Contact) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[30]
+	mi := &file_clients_v1_clients_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3475,7 +3651,7 @@ func (x *Contact) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Contact.ProtoReflect.Descriptor instead.
 func (*Contact) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{30}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *Contact) GetId() uint32 {
@@ -3589,7 +3765,7 @@ type ContactInput struct {
 
 func (x *ContactInput) Reset() {
 	*x = ContactInput{}
-	mi := &file_clients_v1_clients_proto_msgTypes[31]
+	mi := &file_clients_v1_clients_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3601,7 +3777,7 @@ func (x *ContactInput) String() string {
 func (*ContactInput) ProtoMessage() {}
 
 func (x *ContactInput) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[31]
+	mi := &file_clients_v1_clients_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3614,7 +3790,7 @@ func (x *ContactInput) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ContactInput.ProtoReflect.Descriptor instead.
 func (*ContactInput) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{31}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *ContactInput) GetName() string {
@@ -3696,7 +3872,7 @@ type ListContactsRequest struct {
 
 func (x *ListContactsRequest) Reset() {
 	*x = ListContactsRequest{}
-	mi := &file_clients_v1_clients_proto_msgTypes[32]
+	mi := &file_clients_v1_clients_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3708,7 +3884,7 @@ func (x *ListContactsRequest) String() string {
 func (*ListContactsRequest) ProtoMessage() {}
 
 func (x *ListContactsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[32]
+	mi := &file_clients_v1_clients_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3721,7 +3897,7 @@ func (x *ListContactsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListContactsRequest.ProtoReflect.Descriptor instead.
 func (*ListContactsRequest) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{32}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *ListContactsRequest) GetClientId() uint32 {
@@ -3740,7 +3916,7 @@ type ListContactsResponse struct {
 
 func (x *ListContactsResponse) Reset() {
 	*x = ListContactsResponse{}
-	mi := &file_clients_v1_clients_proto_msgTypes[33]
+	mi := &file_clients_v1_clients_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3752,7 +3928,7 @@ func (x *ListContactsResponse) String() string {
 func (*ListContactsResponse) ProtoMessage() {}
 
 func (x *ListContactsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[33]
+	mi := &file_clients_v1_clients_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3765,7 +3941,7 @@ func (x *ListContactsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListContactsResponse.ProtoReflect.Descriptor instead.
 func (*ListContactsResponse) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{33}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *ListContactsResponse) GetContacts() []*Contact {
@@ -3785,7 +3961,7 @@ type CreateContactRequest struct {
 
 func (x *CreateContactRequest) Reset() {
 	*x = CreateContactRequest{}
-	mi := &file_clients_v1_clients_proto_msgTypes[34]
+	mi := &file_clients_v1_clients_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3797,7 +3973,7 @@ func (x *CreateContactRequest) String() string {
 func (*CreateContactRequest) ProtoMessage() {}
 
 func (x *CreateContactRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[34]
+	mi := &file_clients_v1_clients_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3810,7 +3986,7 @@ func (x *CreateContactRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateContactRequest.ProtoReflect.Descriptor instead.
 func (*CreateContactRequest) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{34}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *CreateContactRequest) GetClientId() uint32 {
@@ -3838,7 +4014,7 @@ type UpdateContactRequest struct {
 
 func (x *UpdateContactRequest) Reset() {
 	*x = UpdateContactRequest{}
-	mi := &file_clients_v1_clients_proto_msgTypes[35]
+	mi := &file_clients_v1_clients_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3850,7 +4026,7 @@ func (x *UpdateContactRequest) String() string {
 func (*UpdateContactRequest) ProtoMessage() {}
 
 func (x *UpdateContactRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[35]
+	mi := &file_clients_v1_clients_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3863,7 +4039,7 @@ func (x *UpdateContactRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateContactRequest.ProtoReflect.Descriptor instead.
 func (*UpdateContactRequest) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{35}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *UpdateContactRequest) GetClientId() uint32 {
@@ -3897,7 +4073,7 @@ type DeleteContactRequest struct {
 
 func (x *DeleteContactRequest) Reset() {
 	*x = DeleteContactRequest{}
-	mi := &file_clients_v1_clients_proto_msgTypes[36]
+	mi := &file_clients_v1_clients_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3909,7 +4085,7 @@ func (x *DeleteContactRequest) String() string {
 func (*DeleteContactRequest) ProtoMessage() {}
 
 func (x *DeleteContactRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[36]
+	mi := &file_clients_v1_clients_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3922,7 +4098,7 @@ func (x *DeleteContactRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteContactRequest.ProtoReflect.Descriptor instead.
 func (*DeleteContactRequest) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{36}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *DeleteContactRequest) GetClientId() uint32 {
@@ -3954,7 +4130,7 @@ type Activity struct {
 
 func (x *Activity) Reset() {
 	*x = Activity{}
-	mi := &file_clients_v1_clients_proto_msgTypes[37]
+	mi := &file_clients_v1_clients_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3966,7 +4142,7 @@ func (x *Activity) String() string {
 func (*Activity) ProtoMessage() {}
 
 func (x *Activity) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[37]
+	mi := &file_clients_v1_clients_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3979,7 +4155,7 @@ func (x *Activity) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Activity.ProtoReflect.Descriptor instead.
 func (*Activity) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{37}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *Activity) GetId() uint32 {
@@ -4035,7 +4211,7 @@ type ActivityInput struct {
 
 func (x *ActivityInput) Reset() {
 	*x = ActivityInput{}
-	mi := &file_clients_v1_clients_proto_msgTypes[38]
+	mi := &file_clients_v1_clients_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4047,7 +4223,7 @@ func (x *ActivityInput) String() string {
 func (*ActivityInput) ProtoMessage() {}
 
 func (x *ActivityInput) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[38]
+	mi := &file_clients_v1_clients_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4060,7 +4236,7 @@ func (x *ActivityInput) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ActivityInput.ProtoReflect.Descriptor instead.
 func (*ActivityInput) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{38}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *ActivityInput) GetActivityCode() string {
@@ -4093,7 +4269,7 @@ type ListActivitiesRequest struct {
 
 func (x *ListActivitiesRequest) Reset() {
 	*x = ListActivitiesRequest{}
-	mi := &file_clients_v1_clients_proto_msgTypes[39]
+	mi := &file_clients_v1_clients_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4105,7 +4281,7 @@ func (x *ListActivitiesRequest) String() string {
 func (*ListActivitiesRequest) ProtoMessage() {}
 
 func (x *ListActivitiesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[39]
+	mi := &file_clients_v1_clients_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4118,7 +4294,7 @@ func (x *ListActivitiesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListActivitiesRequest.ProtoReflect.Descriptor instead.
 func (*ListActivitiesRequest) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{39}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *ListActivitiesRequest) GetClientId() uint32 {
@@ -4137,7 +4313,7 @@ type ListActivitiesResponse struct {
 
 func (x *ListActivitiesResponse) Reset() {
 	*x = ListActivitiesResponse{}
-	mi := &file_clients_v1_clients_proto_msgTypes[40]
+	mi := &file_clients_v1_clients_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4149,7 +4325,7 @@ func (x *ListActivitiesResponse) String() string {
 func (*ListActivitiesResponse) ProtoMessage() {}
 
 func (x *ListActivitiesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[40]
+	mi := &file_clients_v1_clients_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4162,7 +4338,7 @@ func (x *ListActivitiesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListActivitiesResponse.ProtoReflect.Descriptor instead.
 func (*ListActivitiesResponse) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{40}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *ListActivitiesResponse) GetActivities() []*Activity {
@@ -4182,7 +4358,7 @@ type CreateActivityRequest struct {
 
 func (x *CreateActivityRequest) Reset() {
 	*x = CreateActivityRequest{}
-	mi := &file_clients_v1_clients_proto_msgTypes[41]
+	mi := &file_clients_v1_clients_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4194,7 +4370,7 @@ func (x *CreateActivityRequest) String() string {
 func (*CreateActivityRequest) ProtoMessage() {}
 
 func (x *CreateActivityRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[41]
+	mi := &file_clients_v1_clients_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4207,7 +4383,7 @@ func (x *CreateActivityRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateActivityRequest.ProtoReflect.Descriptor instead.
 func (*CreateActivityRequest) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{41}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *CreateActivityRequest) GetClientId() uint32 {
@@ -4235,7 +4411,7 @@ type UpdateActivityRequest struct {
 
 func (x *UpdateActivityRequest) Reset() {
 	*x = UpdateActivityRequest{}
-	mi := &file_clients_v1_clients_proto_msgTypes[42]
+	mi := &file_clients_v1_clients_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4247,7 +4423,7 @@ func (x *UpdateActivityRequest) String() string {
 func (*UpdateActivityRequest) ProtoMessage() {}
 
 func (x *UpdateActivityRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[42]
+	mi := &file_clients_v1_clients_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4260,7 +4436,7 @@ func (x *UpdateActivityRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateActivityRequest.ProtoReflect.Descriptor instead.
 func (*UpdateActivityRequest) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{42}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *UpdateActivityRequest) GetClientId() uint32 {
@@ -4294,7 +4470,7 @@ type DeleteActivityRequest struct {
 
 func (x *DeleteActivityRequest) Reset() {
 	*x = DeleteActivityRequest{}
-	mi := &file_clients_v1_clients_proto_msgTypes[43]
+	mi := &file_clients_v1_clients_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4306,7 +4482,7 @@ func (x *DeleteActivityRequest) String() string {
 func (*DeleteActivityRequest) ProtoMessage() {}
 
 func (x *DeleteActivityRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[43]
+	mi := &file_clients_v1_clients_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4319,7 +4495,7 @@ func (x *DeleteActivityRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteActivityRequest.ProtoReflect.Descriptor instead.
 func (*DeleteActivityRequest) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{43}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *DeleteActivityRequest) GetClientId() uint32 {
@@ -4359,7 +4535,7 @@ type Exemption struct {
 
 func (x *Exemption) Reset() {
 	*x = Exemption{}
-	mi := &file_clients_v1_clients_proto_msgTypes[44]
+	mi := &file_clients_v1_clients_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4371,7 +4547,7 @@ func (x *Exemption) String() string {
 func (*Exemption) ProtoMessage() {}
 
 func (x *Exemption) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[44]
+	mi := &file_clients_v1_clients_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4384,7 +4560,7 @@ func (x *Exemption) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Exemption.ProtoReflect.Descriptor instead.
 func (*Exemption) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{44}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *Exemption) GetId() uint32 {
@@ -4504,7 +4680,7 @@ type ExemptionInput struct {
 
 func (x *ExemptionInput) Reset() {
 	*x = ExemptionInput{}
-	mi := &file_clients_v1_clients_proto_msgTypes[45]
+	mi := &file_clients_v1_clients_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4516,7 +4692,7 @@ func (x *ExemptionInput) String() string {
 func (*ExemptionInput) ProtoMessage() {}
 
 func (x *ExemptionInput) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[45]
+	mi := &file_clients_v1_clients_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4529,7 +4705,7 @@ func (x *ExemptionInput) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExemptionInput.ProtoReflect.Descriptor instead.
 func (*ExemptionInput) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{45}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *ExemptionInput) GetExemptionType() string {
@@ -4618,7 +4794,7 @@ type ListExemptionsRequest struct {
 
 func (x *ListExemptionsRequest) Reset() {
 	*x = ListExemptionsRequest{}
-	mi := &file_clients_v1_clients_proto_msgTypes[46]
+	mi := &file_clients_v1_clients_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4630,7 +4806,7 @@ func (x *ListExemptionsRequest) String() string {
 func (*ListExemptionsRequest) ProtoMessage() {}
 
 func (x *ListExemptionsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[46]
+	mi := &file_clients_v1_clients_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4643,7 +4819,7 @@ func (x *ListExemptionsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListExemptionsRequest.ProtoReflect.Descriptor instead.
 func (*ListExemptionsRequest) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{46}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *ListExemptionsRequest) GetClientId() uint32 {
@@ -4662,7 +4838,7 @@ type ListExemptionsResponse struct {
 
 func (x *ListExemptionsResponse) Reset() {
 	*x = ListExemptionsResponse{}
-	mi := &file_clients_v1_clients_proto_msgTypes[47]
+	mi := &file_clients_v1_clients_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4674,7 +4850,7 @@ func (x *ListExemptionsResponse) String() string {
 func (*ListExemptionsResponse) ProtoMessage() {}
 
 func (x *ListExemptionsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[47]
+	mi := &file_clients_v1_clients_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4687,7 +4863,7 @@ func (x *ListExemptionsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListExemptionsResponse.ProtoReflect.Descriptor instead.
 func (*ListExemptionsResponse) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{47}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *ListExemptionsResponse) GetExemptions() []*Exemption {
@@ -4707,7 +4883,7 @@ type CreateExemptionRequest struct {
 
 func (x *CreateExemptionRequest) Reset() {
 	*x = CreateExemptionRequest{}
-	mi := &file_clients_v1_clients_proto_msgTypes[48]
+	mi := &file_clients_v1_clients_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4719,7 +4895,7 @@ func (x *CreateExemptionRequest) String() string {
 func (*CreateExemptionRequest) ProtoMessage() {}
 
 func (x *CreateExemptionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[48]
+	mi := &file_clients_v1_clients_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4732,7 +4908,7 @@ func (x *CreateExemptionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateExemptionRequest.ProtoReflect.Descriptor instead.
 func (*CreateExemptionRequest) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{48}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *CreateExemptionRequest) GetClientId() uint32 {
@@ -4760,7 +4936,7 @@ type UpdateExemptionRequest struct {
 
 func (x *UpdateExemptionRequest) Reset() {
 	*x = UpdateExemptionRequest{}
-	mi := &file_clients_v1_clients_proto_msgTypes[49]
+	mi := &file_clients_v1_clients_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4772,7 +4948,7 @@ func (x *UpdateExemptionRequest) String() string {
 func (*UpdateExemptionRequest) ProtoMessage() {}
 
 func (x *UpdateExemptionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[49]
+	mi := &file_clients_v1_clients_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4785,7 +4961,7 @@ func (x *UpdateExemptionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateExemptionRequest.ProtoReflect.Descriptor instead.
 func (*UpdateExemptionRequest) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{49}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{51}
 }
 
 func (x *UpdateExemptionRequest) GetClientId() uint32 {
@@ -4819,7 +4995,7 @@ type DeleteExemptionRequest struct {
 
 func (x *DeleteExemptionRequest) Reset() {
 	*x = DeleteExemptionRequest{}
-	mi := &file_clients_v1_clients_proto_msgTypes[50]
+	mi := &file_clients_v1_clients_proto_msgTypes[52]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4831,7 +5007,7 @@ func (x *DeleteExemptionRequest) String() string {
 func (*DeleteExemptionRequest) ProtoMessage() {}
 
 func (x *DeleteExemptionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[50]
+	mi := &file_clients_v1_clients_proto_msgTypes[52]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4844,7 +5020,7 @@ func (x *DeleteExemptionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteExemptionRequest.ProtoReflect.Descriptor instead.
 func (*DeleteExemptionRequest) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{50}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{52}
 }
 
 func (x *DeleteExemptionRequest) GetClientId() uint32 {
@@ -4878,7 +5054,7 @@ type CustomTax struct {
 
 func (x *CustomTax) Reset() {
 	*x = CustomTax{}
-	mi := &file_clients_v1_clients_proto_msgTypes[51]
+	mi := &file_clients_v1_clients_proto_msgTypes[53]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4890,7 +5066,7 @@ func (x *CustomTax) String() string {
 func (*CustomTax) ProtoMessage() {}
 
 func (x *CustomTax) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[51]
+	mi := &file_clients_v1_clients_proto_msgTypes[53]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4903,7 +5079,7 @@ func (x *CustomTax) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CustomTax.ProtoReflect.Descriptor instead.
 func (*CustomTax) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{51}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{53}
 }
 
 func (x *CustomTax) GetId() uint32 {
@@ -4975,7 +5151,7 @@ type CustomTaxInput struct {
 
 func (x *CustomTaxInput) Reset() {
 	*x = CustomTaxInput{}
-	mi := &file_clients_v1_clients_proto_msgTypes[52]
+	mi := &file_clients_v1_clients_proto_msgTypes[54]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4987,7 +5163,7 @@ func (x *CustomTaxInput) String() string {
 func (*CustomTaxInput) ProtoMessage() {}
 
 func (x *CustomTaxInput) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[52]
+	mi := &file_clients_v1_clients_proto_msgTypes[54]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5000,7 +5176,7 @@ func (x *CustomTaxInput) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CustomTaxInput.ProtoReflect.Descriptor instead.
 func (*CustomTaxInput) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{52}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{54}
 }
 
 func (x *CustomTaxInput) GetTaxName() string {
@@ -5047,7 +5223,7 @@ type ListCustomTaxesRequest struct {
 
 func (x *ListCustomTaxesRequest) Reset() {
 	*x = ListCustomTaxesRequest{}
-	mi := &file_clients_v1_clients_proto_msgTypes[53]
+	mi := &file_clients_v1_clients_proto_msgTypes[55]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5059,7 +5235,7 @@ func (x *ListCustomTaxesRequest) String() string {
 func (*ListCustomTaxesRequest) ProtoMessage() {}
 
 func (x *ListCustomTaxesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[53]
+	mi := &file_clients_v1_clients_proto_msgTypes[55]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5072,7 +5248,7 @@ func (x *ListCustomTaxesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListCustomTaxesRequest.ProtoReflect.Descriptor instead.
 func (*ListCustomTaxesRequest) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{53}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{55}
 }
 
 func (x *ListCustomTaxesRequest) GetClientId() uint32 {
@@ -5091,7 +5267,7 @@ type ListCustomTaxesResponse struct {
 
 func (x *ListCustomTaxesResponse) Reset() {
 	*x = ListCustomTaxesResponse{}
-	mi := &file_clients_v1_clients_proto_msgTypes[54]
+	mi := &file_clients_v1_clients_proto_msgTypes[56]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5103,7 +5279,7 @@ func (x *ListCustomTaxesResponse) String() string {
 func (*ListCustomTaxesResponse) ProtoMessage() {}
 
 func (x *ListCustomTaxesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[54]
+	mi := &file_clients_v1_clients_proto_msgTypes[56]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5116,7 +5292,7 @@ func (x *ListCustomTaxesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListCustomTaxesResponse.ProtoReflect.Descriptor instead.
 func (*ListCustomTaxesResponse) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{54}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{56}
 }
 
 func (x *ListCustomTaxesResponse) GetTaxes() []*CustomTax {
@@ -5136,7 +5312,7 @@ type CreateCustomTaxRequest struct {
 
 func (x *CreateCustomTaxRequest) Reset() {
 	*x = CreateCustomTaxRequest{}
-	mi := &file_clients_v1_clients_proto_msgTypes[55]
+	mi := &file_clients_v1_clients_proto_msgTypes[57]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5148,7 +5324,7 @@ func (x *CreateCustomTaxRequest) String() string {
 func (*CreateCustomTaxRequest) ProtoMessage() {}
 
 func (x *CreateCustomTaxRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[55]
+	mi := &file_clients_v1_clients_proto_msgTypes[57]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5161,7 +5337,7 @@ func (x *CreateCustomTaxRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateCustomTaxRequest.ProtoReflect.Descriptor instead.
 func (*CreateCustomTaxRequest) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{55}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{57}
 }
 
 func (x *CreateCustomTaxRequest) GetClientId() uint32 {
@@ -5189,7 +5365,7 @@ type UpdateCustomTaxRequest struct {
 
 func (x *UpdateCustomTaxRequest) Reset() {
 	*x = UpdateCustomTaxRequest{}
-	mi := &file_clients_v1_clients_proto_msgTypes[56]
+	mi := &file_clients_v1_clients_proto_msgTypes[58]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5201,7 +5377,7 @@ func (x *UpdateCustomTaxRequest) String() string {
 func (*UpdateCustomTaxRequest) ProtoMessage() {}
 
 func (x *UpdateCustomTaxRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[56]
+	mi := &file_clients_v1_clients_proto_msgTypes[58]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5214,7 +5390,7 @@ func (x *UpdateCustomTaxRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateCustomTaxRequest.ProtoReflect.Descriptor instead.
 func (*UpdateCustomTaxRequest) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{56}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{58}
 }
 
 func (x *UpdateCustomTaxRequest) GetClientId() uint32 {
@@ -5248,7 +5424,7 @@ type DeleteCustomTaxRequest struct {
 
 func (x *DeleteCustomTaxRequest) Reset() {
 	*x = DeleteCustomTaxRequest{}
-	mi := &file_clients_v1_clients_proto_msgTypes[57]
+	mi := &file_clients_v1_clients_proto_msgTypes[59]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5260,7 +5436,7 @@ func (x *DeleteCustomTaxRequest) String() string {
 func (*DeleteCustomTaxRequest) ProtoMessage() {}
 
 func (x *DeleteCustomTaxRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[57]
+	mi := &file_clients_v1_clients_proto_msgTypes[59]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5273,7 +5449,7 @@ func (x *DeleteCustomTaxRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteCustomTaxRequest.ProtoReflect.Descriptor instead.
 func (*DeleteCustomTaxRequest) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{57}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{59}
 }
 
 func (x *DeleteCustomTaxRequest) GetClientId() uint32 {
@@ -5310,7 +5486,7 @@ type Discount struct {
 
 func (x *Discount) Reset() {
 	*x = Discount{}
-	mi := &file_clients_v1_clients_proto_msgTypes[58]
+	mi := &file_clients_v1_clients_proto_msgTypes[60]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5322,7 +5498,7 @@ func (x *Discount) String() string {
 func (*Discount) ProtoMessage() {}
 
 func (x *Discount) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[58]
+	mi := &file_clients_v1_clients_proto_msgTypes[60]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5335,7 +5511,7 @@ func (x *Discount) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Discount.ProtoReflect.Descriptor instead.
 func (*Discount) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{58}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{60}
 }
 
 func (x *Discount) GetId() uint32 {
@@ -5431,7 +5607,7 @@ type DiscountInput struct {
 
 func (x *DiscountInput) Reset() {
 	*x = DiscountInput{}
-	mi := &file_clients_v1_clients_proto_msgTypes[59]
+	mi := &file_clients_v1_clients_proto_msgTypes[61]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5443,7 +5619,7 @@ func (x *DiscountInput) String() string {
 func (*DiscountInput) ProtoMessage() {}
 
 func (x *DiscountInput) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[59]
+	mi := &file_clients_v1_clients_proto_msgTypes[61]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5456,7 +5632,7 @@ func (x *DiscountInput) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DiscountInput.ProtoReflect.Descriptor instead.
 func (*DiscountInput) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{59}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{61}
 }
 
 func (x *DiscountInput) GetDiscountName() string {
@@ -5524,7 +5700,7 @@ type ListDiscountsRequest struct {
 
 func (x *ListDiscountsRequest) Reset() {
 	*x = ListDiscountsRequest{}
-	mi := &file_clients_v1_clients_proto_msgTypes[60]
+	mi := &file_clients_v1_clients_proto_msgTypes[62]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5536,7 +5712,7 @@ func (x *ListDiscountsRequest) String() string {
 func (*ListDiscountsRequest) ProtoMessage() {}
 
 func (x *ListDiscountsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[60]
+	mi := &file_clients_v1_clients_proto_msgTypes[62]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5549,7 +5725,7 @@ func (x *ListDiscountsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListDiscountsRequest.ProtoReflect.Descriptor instead.
 func (*ListDiscountsRequest) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{60}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{62}
 }
 
 func (x *ListDiscountsRequest) GetClientId() uint32 {
@@ -5568,7 +5744,7 @@ type ListDiscountsResponse struct {
 
 func (x *ListDiscountsResponse) Reset() {
 	*x = ListDiscountsResponse{}
-	mi := &file_clients_v1_clients_proto_msgTypes[61]
+	mi := &file_clients_v1_clients_proto_msgTypes[63]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5580,7 +5756,7 @@ func (x *ListDiscountsResponse) String() string {
 func (*ListDiscountsResponse) ProtoMessage() {}
 
 func (x *ListDiscountsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[61]
+	mi := &file_clients_v1_clients_proto_msgTypes[63]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5593,7 +5769,7 @@ func (x *ListDiscountsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListDiscountsResponse.ProtoReflect.Descriptor instead.
 func (*ListDiscountsResponse) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{61}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{63}
 }
 
 func (x *ListDiscountsResponse) GetDiscounts() []*Discount {
@@ -5613,7 +5789,7 @@ type CreateDiscountRequest struct {
 
 func (x *CreateDiscountRequest) Reset() {
 	*x = CreateDiscountRequest{}
-	mi := &file_clients_v1_clients_proto_msgTypes[62]
+	mi := &file_clients_v1_clients_proto_msgTypes[64]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5625,7 +5801,7 @@ func (x *CreateDiscountRequest) String() string {
 func (*CreateDiscountRequest) ProtoMessage() {}
 
 func (x *CreateDiscountRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[62]
+	mi := &file_clients_v1_clients_proto_msgTypes[64]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5638,7 +5814,7 @@ func (x *CreateDiscountRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateDiscountRequest.ProtoReflect.Descriptor instead.
 func (*CreateDiscountRequest) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{62}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{64}
 }
 
 func (x *CreateDiscountRequest) GetClientId() uint32 {
@@ -5666,7 +5842,7 @@ type UpdateDiscountRequest struct {
 
 func (x *UpdateDiscountRequest) Reset() {
 	*x = UpdateDiscountRequest{}
-	mi := &file_clients_v1_clients_proto_msgTypes[63]
+	mi := &file_clients_v1_clients_proto_msgTypes[65]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5678,7 +5854,7 @@ func (x *UpdateDiscountRequest) String() string {
 func (*UpdateDiscountRequest) ProtoMessage() {}
 
 func (x *UpdateDiscountRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[63]
+	mi := &file_clients_v1_clients_proto_msgTypes[65]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5691,7 +5867,7 @@ func (x *UpdateDiscountRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateDiscountRequest.ProtoReflect.Descriptor instead.
 func (*UpdateDiscountRequest) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{63}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{65}
 }
 
 func (x *UpdateDiscountRequest) GetClientId() uint32 {
@@ -5725,7 +5901,7 @@ type DeleteDiscountRequest struct {
 
 func (x *DeleteDiscountRequest) Reset() {
 	*x = DeleteDiscountRequest{}
-	mi := &file_clients_v1_clients_proto_msgTypes[64]
+	mi := &file_clients_v1_clients_proto_msgTypes[66]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5737,7 +5913,7 @@ func (x *DeleteDiscountRequest) String() string {
 func (*DeleteDiscountRequest) ProtoMessage() {}
 
 func (x *DeleteDiscountRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[64]
+	mi := &file_clients_v1_clients_proto_msgTypes[66]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5750,7 +5926,7 @@ func (x *DeleteDiscountRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteDiscountRequest.ProtoReflect.Descriptor instead.
 func (*DeleteDiscountRequest) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{64}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{66}
 }
 
 func (x *DeleteDiscountRequest) GetClientId() uint32 {
@@ -5788,7 +5964,7 @@ type CreditProfile struct {
 
 func (x *CreditProfile) Reset() {
 	*x = CreditProfile{}
-	mi := &file_clients_v1_clients_proto_msgTypes[65]
+	mi := &file_clients_v1_clients_proto_msgTypes[67]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5800,7 +5976,7 @@ func (x *CreditProfile) String() string {
 func (*CreditProfile) ProtoMessage() {}
 
 func (x *CreditProfile) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[65]
+	mi := &file_clients_v1_clients_proto_msgTypes[67]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5813,7 +5989,7 @@ func (x *CreditProfile) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreditProfile.ProtoReflect.Descriptor instead.
 func (*CreditProfile) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{65}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{67}
 }
 
 func (x *CreditProfile) GetId() uint32 {
@@ -5917,7 +6093,7 @@ type CreditProfileInput struct {
 
 func (x *CreditProfileInput) Reset() {
 	*x = CreditProfileInput{}
-	mi := &file_clients_v1_clients_proto_msgTypes[66]
+	mi := &file_clients_v1_clients_proto_msgTypes[68]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5929,7 +6105,7 @@ func (x *CreditProfileInput) String() string {
 func (*CreditProfileInput) ProtoMessage() {}
 
 func (x *CreditProfileInput) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[66]
+	mi := &file_clients_v1_clients_proto_msgTypes[68]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5942,7 +6118,7 @@ func (x *CreditProfileInput) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreditProfileInput.ProtoReflect.Descriptor instead.
 func (*CreditProfileInput) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{66}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{68}
 }
 
 func (x *CreditProfileInput) GetRepresentativeName() string {
@@ -6017,7 +6193,7 @@ type GetCreditProfileRequest struct {
 
 func (x *GetCreditProfileRequest) Reset() {
 	*x = GetCreditProfileRequest{}
-	mi := &file_clients_v1_clients_proto_msgTypes[67]
+	mi := &file_clients_v1_clients_proto_msgTypes[69]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6029,7 +6205,7 @@ func (x *GetCreditProfileRequest) String() string {
 func (*GetCreditProfileRequest) ProtoMessage() {}
 
 func (x *GetCreditProfileRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[67]
+	mi := &file_clients_v1_clients_proto_msgTypes[69]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6042,7 +6218,7 @@ func (x *GetCreditProfileRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetCreditProfileRequest.ProtoReflect.Descriptor instead.
 func (*GetCreditProfileRequest) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{67}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{69}
 }
 
 func (x *GetCreditProfileRequest) GetClientId() uint32 {
@@ -6062,7 +6238,7 @@ type UpsertCreditProfileRequest struct {
 
 func (x *UpsertCreditProfileRequest) Reset() {
 	*x = UpsertCreditProfileRequest{}
-	mi := &file_clients_v1_clients_proto_msgTypes[68]
+	mi := &file_clients_v1_clients_proto_msgTypes[70]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6074,7 +6250,7 @@ func (x *UpsertCreditProfileRequest) String() string {
 func (*UpsertCreditProfileRequest) ProtoMessage() {}
 
 func (x *UpsertCreditProfileRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[68]
+	mi := &file_clients_v1_clients_proto_msgTypes[70]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6087,7 +6263,7 @@ func (x *UpsertCreditProfileRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpsertCreditProfileRequest.ProtoReflect.Descriptor instead.
 func (*UpsertCreditProfileRequest) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{68}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{70}
 }
 
 func (x *UpsertCreditProfileRequest) GetClientId() uint32 {
@@ -6120,7 +6296,7 @@ type SupplierProfile struct {
 
 func (x *SupplierProfile) Reset() {
 	*x = SupplierProfile{}
-	mi := &file_clients_v1_clients_proto_msgTypes[69]
+	mi := &file_clients_v1_clients_proto_msgTypes[71]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6132,7 +6308,7 @@ func (x *SupplierProfile) String() string {
 func (*SupplierProfile) ProtoMessage() {}
 
 func (x *SupplierProfile) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[69]
+	mi := &file_clients_v1_clients_proto_msgTypes[71]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6145,7 +6321,7 @@ func (x *SupplierProfile) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SupplierProfile.ProtoReflect.Descriptor instead.
 func (*SupplierProfile) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{69}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{71}
 }
 
 func (x *SupplierProfile) GetIssuesReceipt() bool {
@@ -6194,7 +6370,7 @@ type SupplierProfileInput struct {
 
 func (x *SupplierProfileInput) Reset() {
 	*x = SupplierProfileInput{}
-	mi := &file_clients_v1_clients_proto_msgTypes[70]
+	mi := &file_clients_v1_clients_proto_msgTypes[72]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6206,7 +6382,7 @@ func (x *SupplierProfileInput) String() string {
 func (*SupplierProfileInput) ProtoMessage() {}
 
 func (x *SupplierProfileInput) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[70]
+	mi := &file_clients_v1_clients_proto_msgTypes[72]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6219,7 +6395,7 @@ func (x *SupplierProfileInput) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SupplierProfileInput.ProtoReflect.Descriptor instead.
 func (*SupplierProfileInput) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{70}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{72}
 }
 
 func (x *SupplierProfileInput) GetIssuesReceipt() bool {
@@ -6252,7 +6428,7 @@ type GetSupplierProfileRequest struct {
 
 func (x *GetSupplierProfileRequest) Reset() {
 	*x = GetSupplierProfileRequest{}
-	mi := &file_clients_v1_clients_proto_msgTypes[71]
+	mi := &file_clients_v1_clients_proto_msgTypes[73]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6264,7 +6440,7 @@ func (x *GetSupplierProfileRequest) String() string {
 func (*GetSupplierProfileRequest) ProtoMessage() {}
 
 func (x *GetSupplierProfileRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[71]
+	mi := &file_clients_v1_clients_proto_msgTypes[73]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6277,7 +6453,7 @@ func (x *GetSupplierProfileRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSupplierProfileRequest.ProtoReflect.Descriptor instead.
 func (*GetSupplierProfileRequest) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{71}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{73}
 }
 
 func (x *GetSupplierProfileRequest) GetClientId() uint32 {
@@ -6297,7 +6473,7 @@ type UpsertSupplierProfileRequest struct {
 
 func (x *UpsertSupplierProfileRequest) Reset() {
 	*x = UpsertSupplierProfileRequest{}
-	mi := &file_clients_v1_clients_proto_msgTypes[72]
+	mi := &file_clients_v1_clients_proto_msgTypes[74]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6309,7 +6485,7 @@ func (x *UpsertSupplierProfileRequest) String() string {
 func (*UpsertSupplierProfileRequest) ProtoMessage() {}
 
 func (x *UpsertSupplierProfileRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[72]
+	mi := &file_clients_v1_clients_proto_msgTypes[74]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6322,7 +6498,7 @@ func (x *UpsertSupplierProfileRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpsertSupplierProfileRequest.ProtoReflect.Descriptor instead.
 func (*UpsertSupplierProfileRequest) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{72}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{74}
 }
 
 func (x *UpsertSupplierProfileRequest) GetClientId() uint32 {
@@ -6362,7 +6538,7 @@ type AttachedDocument struct {
 
 func (x *AttachedDocument) Reset() {
 	*x = AttachedDocument{}
-	mi := &file_clients_v1_clients_proto_msgTypes[73]
+	mi := &file_clients_v1_clients_proto_msgTypes[75]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6374,7 +6550,7 @@ func (x *AttachedDocument) String() string {
 func (*AttachedDocument) ProtoMessage() {}
 
 func (x *AttachedDocument) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[73]
+	mi := &file_clients_v1_clients_proto_msgTypes[75]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6387,7 +6563,7 @@ func (x *AttachedDocument) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AttachedDocument.ProtoReflect.Descriptor instead.
 func (*AttachedDocument) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{73}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{75}
 }
 
 func (x *AttachedDocument) GetId() uint32 {
@@ -6475,7 +6651,7 @@ type AttachedDocumentInput struct {
 
 func (x *AttachedDocumentInput) Reset() {
 	*x = AttachedDocumentInput{}
-	mi := &file_clients_v1_clients_proto_msgTypes[74]
+	mi := &file_clients_v1_clients_proto_msgTypes[76]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6487,7 +6663,7 @@ func (x *AttachedDocumentInput) String() string {
 func (*AttachedDocumentInput) ProtoMessage() {}
 
 func (x *AttachedDocumentInput) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[74]
+	mi := &file_clients_v1_clients_proto_msgTypes[76]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6500,7 +6676,7 @@ func (x *AttachedDocumentInput) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AttachedDocumentInput.ProtoReflect.Descriptor instead.
 func (*AttachedDocumentInput) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{74}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{76}
 }
 
 func (x *AttachedDocumentInput) GetDocumentType() string {
@@ -6547,7 +6723,7 @@ type ListAttachedDocumentsRequest struct {
 
 func (x *ListAttachedDocumentsRequest) Reset() {
 	*x = ListAttachedDocumentsRequest{}
-	mi := &file_clients_v1_clients_proto_msgTypes[75]
+	mi := &file_clients_v1_clients_proto_msgTypes[77]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6559,7 +6735,7 @@ func (x *ListAttachedDocumentsRequest) String() string {
 func (*ListAttachedDocumentsRequest) ProtoMessage() {}
 
 func (x *ListAttachedDocumentsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[75]
+	mi := &file_clients_v1_clients_proto_msgTypes[77]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6572,7 +6748,7 @@ func (x *ListAttachedDocumentsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListAttachedDocumentsRequest.ProtoReflect.Descriptor instead.
 func (*ListAttachedDocumentsRequest) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{75}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{77}
 }
 
 func (x *ListAttachedDocumentsRequest) GetClientId() uint32 {
@@ -6591,7 +6767,7 @@ type ListAttachedDocumentsResponse struct {
 
 func (x *ListAttachedDocumentsResponse) Reset() {
 	*x = ListAttachedDocumentsResponse{}
-	mi := &file_clients_v1_clients_proto_msgTypes[76]
+	mi := &file_clients_v1_clients_proto_msgTypes[78]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6603,7 +6779,7 @@ func (x *ListAttachedDocumentsResponse) String() string {
 func (*ListAttachedDocumentsResponse) ProtoMessage() {}
 
 func (x *ListAttachedDocumentsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[76]
+	mi := &file_clients_v1_clients_proto_msgTypes[78]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6616,7 +6792,7 @@ func (x *ListAttachedDocumentsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListAttachedDocumentsResponse.ProtoReflect.Descriptor instead.
 func (*ListAttachedDocumentsResponse) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{76}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{78}
 }
 
 func (x *ListAttachedDocumentsResponse) GetDocuments() []*AttachedDocument {
@@ -6636,7 +6812,7 @@ type CreateAttachedDocumentRequest struct {
 
 func (x *CreateAttachedDocumentRequest) Reset() {
 	*x = CreateAttachedDocumentRequest{}
-	mi := &file_clients_v1_clients_proto_msgTypes[77]
+	mi := &file_clients_v1_clients_proto_msgTypes[79]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6648,7 +6824,7 @@ func (x *CreateAttachedDocumentRequest) String() string {
 func (*CreateAttachedDocumentRequest) ProtoMessage() {}
 
 func (x *CreateAttachedDocumentRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[77]
+	mi := &file_clients_v1_clients_proto_msgTypes[79]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6661,7 +6837,7 @@ func (x *CreateAttachedDocumentRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateAttachedDocumentRequest.ProtoReflect.Descriptor instead.
 func (*CreateAttachedDocumentRequest) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{77}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{79}
 }
 
 func (x *CreateAttachedDocumentRequest) GetClientId() uint32 {
@@ -6689,7 +6865,7 @@ type UpdateAttachedDocumentRequest struct {
 
 func (x *UpdateAttachedDocumentRequest) Reset() {
 	*x = UpdateAttachedDocumentRequest{}
-	mi := &file_clients_v1_clients_proto_msgTypes[78]
+	mi := &file_clients_v1_clients_proto_msgTypes[80]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6701,7 +6877,7 @@ func (x *UpdateAttachedDocumentRequest) String() string {
 func (*UpdateAttachedDocumentRequest) ProtoMessage() {}
 
 func (x *UpdateAttachedDocumentRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[78]
+	mi := &file_clients_v1_clients_proto_msgTypes[80]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6714,7 +6890,7 @@ func (x *UpdateAttachedDocumentRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateAttachedDocumentRequest.ProtoReflect.Descriptor instead.
 func (*UpdateAttachedDocumentRequest) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{78}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{80}
 }
 
 func (x *UpdateAttachedDocumentRequest) GetClientId() uint32 {
@@ -6748,7 +6924,7 @@ type DeleteAttachedDocumentRequest struct {
 
 func (x *DeleteAttachedDocumentRequest) Reset() {
 	*x = DeleteAttachedDocumentRequest{}
-	mi := &file_clients_v1_clients_proto_msgTypes[79]
+	mi := &file_clients_v1_clients_proto_msgTypes[81]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6760,7 +6936,7 @@ func (x *DeleteAttachedDocumentRequest) String() string {
 func (*DeleteAttachedDocumentRequest) ProtoMessage() {}
 
 func (x *DeleteAttachedDocumentRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[79]
+	mi := &file_clients_v1_clients_proto_msgTypes[81]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6773,7 +6949,7 @@ func (x *DeleteAttachedDocumentRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteAttachedDocumentRequest.ProtoReflect.Descriptor instead.
 func (*DeleteAttachedDocumentRequest) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{79}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{81}
 }
 
 func (x *DeleteAttachedDocumentRequest) GetClientId() uint32 {
@@ -6799,7 +6975,7 @@ type GetAccountStatementRequest struct {
 
 func (x *GetAccountStatementRequest) Reset() {
 	*x = GetAccountStatementRequest{}
-	mi := &file_clients_v1_clients_proto_msgTypes[80]
+	mi := &file_clients_v1_clients_proto_msgTypes[82]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6811,7 +6987,7 @@ func (x *GetAccountStatementRequest) String() string {
 func (*GetAccountStatementRequest) ProtoMessage() {}
 
 func (x *GetAccountStatementRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[80]
+	mi := &file_clients_v1_clients_proto_msgTypes[82]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6824,7 +7000,7 @@ func (x *GetAccountStatementRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetAccountStatementRequest.ProtoReflect.Descriptor instead.
 func (*GetAccountStatementRequest) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{80}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{82}
 }
 
 func (x *GetAccountStatementRequest) GetClientId() uint32 {
@@ -6985,7 +7161,7 @@ type AccountStatement struct {
 
 func (x *AccountStatement) Reset() {
 	*x = AccountStatement{}
-	mi := &file_clients_v1_clients_proto_msgTypes[81]
+	mi := &file_clients_v1_clients_proto_msgTypes[83]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6997,7 +7173,7 @@ func (x *AccountStatement) String() string {
 func (*AccountStatement) ProtoMessage() {}
 
 func (x *AccountStatement) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[81]
+	mi := &file_clients_v1_clients_proto_msgTypes[83]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7010,7 +7186,7 @@ func (x *AccountStatement) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AccountStatement.ProtoReflect.Descriptor instead.
 func (*AccountStatement) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{81}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{83}
 }
 
 func (x *AccountStatement) GetCreditLimit() float64 {
@@ -7172,7 +7348,7 @@ type OutstandingDocument struct {
 
 func (x *OutstandingDocument) Reset() {
 	*x = OutstandingDocument{}
-	mi := &file_clients_v1_clients_proto_msgTypes[82]
+	mi := &file_clients_v1_clients_proto_msgTypes[84]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7184,7 +7360,7 @@ func (x *OutstandingDocument) String() string {
 func (*OutstandingDocument) ProtoMessage() {}
 
 func (x *OutstandingDocument) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[82]
+	mi := &file_clients_v1_clients_proto_msgTypes[84]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7197,7 +7373,7 @@ func (x *OutstandingDocument) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OutstandingDocument.ProtoReflect.Descriptor instead.
 func (*OutstandingDocument) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{82}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{84}
 }
 
 func (x *OutstandingDocument) GetDocumentId() string {
@@ -7311,7 +7487,7 @@ type AgingBucket struct {
 
 func (x *AgingBucket) Reset() {
 	*x = AgingBucket{}
-	mi := &file_clients_v1_clients_proto_msgTypes[83]
+	mi := &file_clients_v1_clients_proto_msgTypes[85]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7323,7 +7499,7 @@ func (x *AgingBucket) String() string {
 func (*AgingBucket) ProtoMessage() {}
 
 func (x *AgingBucket) ProtoReflect() protoreflect.Message {
-	mi := &file_clients_v1_clients_proto_msgTypes[83]
+	mi := &file_clients_v1_clients_proto_msgTypes[85]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7336,7 +7512,7 @@ func (x *AgingBucket) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AgingBucket.ProtoReflect.Descriptor instead.
 func (*AgingBucket) Descriptor() ([]byte, []int) {
-	return file_clients_v1_clients_proto_rawDescGZIP(), []int{83}
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{85}
 }
 
 func (x *AgingBucket) GetKey() string {
@@ -7658,7 +7834,31 @@ const file_clients_v1_clients_proto_rawDesc = "" +
 	"\x13DeleteClientRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\rR\x02id\"0\n" +
 	"\x14DeleteClientResponse\x12\x18\n" +
-	"\amessage\x18\x01 \x01(\tR\amessage\"\xfa\x01\n" +
+	"\amessage\x18\x01 \x01(\tR\amessage\"Q\n" +
+	"\x13MergeClientsRequest\x12\x1f\n" +
+	"\vsurvivor_id\x18\x01 \x01(\rR\n" +
+	"survivorId\x12\x19\n" +
+	"\bloser_id\x18\x02 \x01(\rR\aloserId\"\xfa\x03\n" +
+	"\x14MergeClientsResponse\x12\x19\n" +
+	"\bmerge_id\x18\x01 \x01(\x04R\amergeId\x12\x1f\n" +
+	"\vsurvivor_id\x18\x02 \x01(\rR\n" +
+	"survivorId\x12\x19\n" +
+	"\bloser_id\x18\x03 \x01(\rR\aloserId\x12\x1d\n" +
+	"\n" +
+	"loser_code\x18\x04 \x01(\tR\tloserCode\x12&\n" +
+	"\x0floser_id_number\x18\x05 \x01(\tR\rloserIdNumber\x12\x1d\n" +
+	"\n" +
+	"loser_name\x18\x06 \x01(\tR\tloserName\x12A\n" +
+	"\x05moved\x18\a \x03(\v2+.clients.v1.MergeClientsResponse.MovedEntryR\x05moved\x12M\n" +
+	"\tconflicts\x18\b \x03(\v2/.clients.v1.MergeClientsResponse.ConflictsEntryR\tconflicts\x12\x1b\n" +
+	"\tmerged_at\x18\t \x01(\tR\bmergedAt\x1a8\n" +
+	"\n" +
+	"MovedEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\x05R\x05value:\x028\x01\x1a<\n" +
+	"\x0eConflictsEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\x05R\x05value:\x028\x01\"\xfa\x01\n" +
 	"\x12ListClientsRequest\x12\f\n" +
 	"\x01q\x18\x01 \x01(\tR\x01q\x12\x16\n" +
 	"\x06status\x18\x02 \x01(\tR\x06status\x12+\n" +
@@ -8162,13 +8362,14 @@ const file_clients_v1_clients_proto_rawDesc = "" +
 	"\ato_days\x18\x03 \x01(\x05R\x06toDays\x12\x14\n" +
 	"\x05count\x18\x04 \x01(\rR\x05count\x12\x14\n" +
 	"\x05total\x18\x05 \x01(\tR\x05total\x12#\n" +
-	"\rforeign_count\x18\x06 \x01(\rR\fforeignCount2\xb3)\n" +
+	"\rforeign_count\x18\x06 \x01(\rR\fforeignCount2\xb2*\n" +
 	"\x0eClientsService\x12[\n" +
 	"\fCreateClient\x12\x1f.clients.v1.CreateClientRequest\x1a\x12.clients.v1.Client\"\x16\x82\xd3\xe4\x93\x02\x10:\x01*\"\v/v1/clients\x12c\n" +
 	"\vListClients\x12\x1e.clients.v1.ListClientsRequest\x1a\x1f.clients.v1.ListClientsResponse\"\x13\x82\xd3\xe4\x93\x02\r\x12\v/v1/clients\x12W\n" +
 	"\tGetClient\x12\x1c.clients.v1.GetClientRequest\x1a\x12.clients.v1.Client\"\x18\x82\xd3\xe4\x93\x02\x12\x12\x10/v1/clients/{id}\x12`\n" +
 	"\fUpdateClient\x12\x1f.clients.v1.UpdateClientRequest\x1a\x12.clients.v1.Client\"\x1b\x82\xd3\xe4\x93\x02\x15:\x01*\x1a\x10/v1/clients/{id}\x12k\n" +
-	"\fDeleteClient\x12\x1f.clients.v1.DeleteClientRequest\x1a .clients.v1.DeleteClientResponse\"\x18\x82\xd3\xe4\x93\x02\x12*\x10/v1/clients/{id}\x12p\n" +
+	"\fDeleteClient\x12\x1f.clients.v1.DeleteClientRequest\x1a .clients.v1.DeleteClientResponse\"\x18\x82\xd3\xe4\x93\x02\x12*\x10/v1/clients/{id}\x12}\n" +
+	"\fMergeClients\x12\x1f.clients.v1.MergeClientsRequest\x1a .clients.v1.MergeClientsResponse\"*\x82\xd3\xe4\x93\x02$:\x01*\"\x1f/v1/clients/{survivor_id}:merge\x12p\n" +
 	"\rLookupClients\x12 .clients.v1.LookupClientsRequest\x1a!.clients.v1.LookupClientsResponse\"\x1a\x82\xd3\xe4\x93\x02\x14\x12\x12/v1/clients:lookup\x12\x93\x01\n" +
 	"\x13GetClientTaxProfile\x12&.clients.v1.GetClientTaxProfileRequest\x1a'.clients.v1.GetClientTaxProfileResponse\"+\x82\xd3\xe4\x93\x02%\x12#/v1/clients/{client_id}/tax-profile\x12\xac\x01\n" +
 	"\x15ValidateClientContact\x12(.clients.v1.ValidateClientContactRequest\x1a).clients.v1.ValidateClientContactResponse\">\x82\xd3\xe4\x93\x028\x126/v1/clients/{client_id}/contacts/{contact_id}:validate\x12\x83\x01\n" +
@@ -8217,7 +8418,7 @@ func file_clients_v1_clients_proto_rawDescGZIP() []byte {
 	return file_clients_v1_clients_proto_rawDescData
 }
 
-var file_clients_v1_clients_proto_msgTypes = make([]protoimpl.MessageInfo, 85)
+var file_clients_v1_clients_proto_msgTypes = make([]protoimpl.MessageInfo, 89)
 var file_clients_v1_clients_proto_goTypes = []any{
 	(*Client)(nil),                        // 0: clients.v1.Client
 	(*CreateClientRequest)(nil),           // 1: clients.v1.CreateClientRequest
@@ -8225,206 +8426,214 @@ var file_clients_v1_clients_proto_goTypes = []any{
 	(*GetClientRequest)(nil),              // 3: clients.v1.GetClientRequest
 	(*DeleteClientRequest)(nil),           // 4: clients.v1.DeleteClientRequest
 	(*DeleteClientResponse)(nil),          // 5: clients.v1.DeleteClientResponse
-	(*ListClientsRequest)(nil),            // 6: clients.v1.ListClientsRequest
-	(*ListClientsResponse)(nil),           // 7: clients.v1.ListClientsResponse
-	(*LookupClientsRequest)(nil),          // 8: clients.v1.LookupClientsRequest
-	(*ClientRef)(nil),                     // 9: clients.v1.ClientRef
-	(*LookupClientsResponse)(nil),         // 10: clients.v1.LookupClientsResponse
-	(*LookupSuppliersRequest)(nil),        // 11: clients.v1.LookupSuppliersRequest
-	(*SupplierRef)(nil),                   // 12: clients.v1.SupplierRef
-	(*LookupSuppliersResponse)(nil),       // 13: clients.v1.LookupSuppliersResponse
-	(*GetClientTaxProfileRequest)(nil),    // 14: clients.v1.GetClientTaxProfileRequest
-	(*CustomTaxInfo)(nil),                 // 15: clients.v1.CustomTaxInfo
-	(*ExemptionInfo)(nil),                 // 16: clients.v1.ExemptionInfo
-	(*GetClientTaxProfileResponse)(nil),   // 17: clients.v1.GetClientTaxProfileResponse
-	(*ValidateClientContactRequest)(nil),  // 18: clients.v1.ValidateClientContactRequest
-	(*ValidateClientContactResponse)(nil), // 19: clients.v1.ValidateClientContactResponse
-	(*ImportPreviewRequest)(nil),          // 20: clients.v1.ImportPreviewRequest
-	(*ImportRow)(nil),                     // 21: clients.v1.ImportRow
-	(*ParsedRow)(nil),                     // 22: clients.v1.ParsedRow
-	(*ImportSummary)(nil),                 // 23: clients.v1.ImportSummary
-	(*DetectedColumn)(nil),                // 24: clients.v1.DetectedColumn
-	(*ImportPreviewResponse)(nil),         // 25: clients.v1.ImportPreviewResponse
-	(*ImportConfirmRequest)(nil),          // 26: clients.v1.ImportConfirmRequest
-	(*ConfirmFailure)(nil),                // 27: clients.v1.ConfirmFailure
-	(*ImportConfirmResponse)(nil),         // 28: clients.v1.ImportConfirmResponse
-	(*DeleteSubEntityResponse)(nil),       // 29: clients.v1.DeleteSubEntityResponse
-	(*Contact)(nil),                       // 30: clients.v1.Contact
-	(*ContactInput)(nil),                  // 31: clients.v1.ContactInput
-	(*ListContactsRequest)(nil),           // 32: clients.v1.ListContactsRequest
-	(*ListContactsResponse)(nil),          // 33: clients.v1.ListContactsResponse
-	(*CreateContactRequest)(nil),          // 34: clients.v1.CreateContactRequest
-	(*UpdateContactRequest)(nil),          // 35: clients.v1.UpdateContactRequest
-	(*DeleteContactRequest)(nil),          // 36: clients.v1.DeleteContactRequest
-	(*Activity)(nil),                      // 37: clients.v1.Activity
-	(*ActivityInput)(nil),                 // 38: clients.v1.ActivityInput
-	(*ListActivitiesRequest)(nil),         // 39: clients.v1.ListActivitiesRequest
-	(*ListActivitiesResponse)(nil),        // 40: clients.v1.ListActivitiesResponse
-	(*CreateActivityRequest)(nil),         // 41: clients.v1.CreateActivityRequest
-	(*UpdateActivityRequest)(nil),         // 42: clients.v1.UpdateActivityRequest
-	(*DeleteActivityRequest)(nil),         // 43: clients.v1.DeleteActivityRequest
-	(*Exemption)(nil),                     // 44: clients.v1.Exemption
-	(*ExemptionInput)(nil),                // 45: clients.v1.ExemptionInput
-	(*ListExemptionsRequest)(nil),         // 46: clients.v1.ListExemptionsRequest
-	(*ListExemptionsResponse)(nil),        // 47: clients.v1.ListExemptionsResponse
-	(*CreateExemptionRequest)(nil),        // 48: clients.v1.CreateExemptionRequest
-	(*UpdateExemptionRequest)(nil),        // 49: clients.v1.UpdateExemptionRequest
-	(*DeleteExemptionRequest)(nil),        // 50: clients.v1.DeleteExemptionRequest
-	(*CustomTax)(nil),                     // 51: clients.v1.CustomTax
-	(*CustomTaxInput)(nil),                // 52: clients.v1.CustomTaxInput
-	(*ListCustomTaxesRequest)(nil),        // 53: clients.v1.ListCustomTaxesRequest
-	(*ListCustomTaxesResponse)(nil),       // 54: clients.v1.ListCustomTaxesResponse
-	(*CreateCustomTaxRequest)(nil),        // 55: clients.v1.CreateCustomTaxRequest
-	(*UpdateCustomTaxRequest)(nil),        // 56: clients.v1.UpdateCustomTaxRequest
-	(*DeleteCustomTaxRequest)(nil),        // 57: clients.v1.DeleteCustomTaxRequest
-	(*Discount)(nil),                      // 58: clients.v1.Discount
-	(*DiscountInput)(nil),                 // 59: clients.v1.DiscountInput
-	(*ListDiscountsRequest)(nil),          // 60: clients.v1.ListDiscountsRequest
-	(*ListDiscountsResponse)(nil),         // 61: clients.v1.ListDiscountsResponse
-	(*CreateDiscountRequest)(nil),         // 62: clients.v1.CreateDiscountRequest
-	(*UpdateDiscountRequest)(nil),         // 63: clients.v1.UpdateDiscountRequest
-	(*DeleteDiscountRequest)(nil),         // 64: clients.v1.DeleteDiscountRequest
-	(*CreditProfile)(nil),                 // 65: clients.v1.CreditProfile
-	(*CreditProfileInput)(nil),            // 66: clients.v1.CreditProfileInput
-	(*GetCreditProfileRequest)(nil),       // 67: clients.v1.GetCreditProfileRequest
-	(*UpsertCreditProfileRequest)(nil),    // 68: clients.v1.UpsertCreditProfileRequest
-	(*SupplierProfile)(nil),               // 69: clients.v1.SupplierProfile
-	(*SupplierProfileInput)(nil),          // 70: clients.v1.SupplierProfileInput
-	(*GetSupplierProfileRequest)(nil),     // 71: clients.v1.GetSupplierProfileRequest
-	(*UpsertSupplierProfileRequest)(nil),  // 72: clients.v1.UpsertSupplierProfileRequest
-	(*AttachedDocument)(nil),              // 73: clients.v1.AttachedDocument
-	(*AttachedDocumentInput)(nil),         // 74: clients.v1.AttachedDocumentInput
-	(*ListAttachedDocumentsRequest)(nil),  // 75: clients.v1.ListAttachedDocumentsRequest
-	(*ListAttachedDocumentsResponse)(nil), // 76: clients.v1.ListAttachedDocumentsResponse
-	(*CreateAttachedDocumentRequest)(nil), // 77: clients.v1.CreateAttachedDocumentRequest
-	(*UpdateAttachedDocumentRequest)(nil), // 78: clients.v1.UpdateAttachedDocumentRequest
-	(*DeleteAttachedDocumentRequest)(nil), // 79: clients.v1.DeleteAttachedDocumentRequest
-	(*GetAccountStatementRequest)(nil),    // 80: clients.v1.GetAccountStatementRequest
-	(*AccountStatement)(nil),              // 81: clients.v1.AccountStatement
-	(*OutstandingDocument)(nil),           // 82: clients.v1.OutstandingDocument
-	(*AgingBucket)(nil),                   // 83: clients.v1.AgingBucket
-	nil,                                   // 84: clients.v1.ParsedRow.ErrorsEntry
+	(*MergeClientsRequest)(nil),           // 6: clients.v1.MergeClientsRequest
+	(*MergeClientsResponse)(nil),          // 7: clients.v1.MergeClientsResponse
+	(*ListClientsRequest)(nil),            // 8: clients.v1.ListClientsRequest
+	(*ListClientsResponse)(nil),           // 9: clients.v1.ListClientsResponse
+	(*LookupClientsRequest)(nil),          // 10: clients.v1.LookupClientsRequest
+	(*ClientRef)(nil),                     // 11: clients.v1.ClientRef
+	(*LookupClientsResponse)(nil),         // 12: clients.v1.LookupClientsResponse
+	(*LookupSuppliersRequest)(nil),        // 13: clients.v1.LookupSuppliersRequest
+	(*SupplierRef)(nil),                   // 14: clients.v1.SupplierRef
+	(*LookupSuppliersResponse)(nil),       // 15: clients.v1.LookupSuppliersResponse
+	(*GetClientTaxProfileRequest)(nil),    // 16: clients.v1.GetClientTaxProfileRequest
+	(*CustomTaxInfo)(nil),                 // 17: clients.v1.CustomTaxInfo
+	(*ExemptionInfo)(nil),                 // 18: clients.v1.ExemptionInfo
+	(*GetClientTaxProfileResponse)(nil),   // 19: clients.v1.GetClientTaxProfileResponse
+	(*ValidateClientContactRequest)(nil),  // 20: clients.v1.ValidateClientContactRequest
+	(*ValidateClientContactResponse)(nil), // 21: clients.v1.ValidateClientContactResponse
+	(*ImportPreviewRequest)(nil),          // 22: clients.v1.ImportPreviewRequest
+	(*ImportRow)(nil),                     // 23: clients.v1.ImportRow
+	(*ParsedRow)(nil),                     // 24: clients.v1.ParsedRow
+	(*ImportSummary)(nil),                 // 25: clients.v1.ImportSummary
+	(*DetectedColumn)(nil),                // 26: clients.v1.DetectedColumn
+	(*ImportPreviewResponse)(nil),         // 27: clients.v1.ImportPreviewResponse
+	(*ImportConfirmRequest)(nil),          // 28: clients.v1.ImportConfirmRequest
+	(*ConfirmFailure)(nil),                // 29: clients.v1.ConfirmFailure
+	(*ImportConfirmResponse)(nil),         // 30: clients.v1.ImportConfirmResponse
+	(*DeleteSubEntityResponse)(nil),       // 31: clients.v1.DeleteSubEntityResponse
+	(*Contact)(nil),                       // 32: clients.v1.Contact
+	(*ContactInput)(nil),                  // 33: clients.v1.ContactInput
+	(*ListContactsRequest)(nil),           // 34: clients.v1.ListContactsRequest
+	(*ListContactsResponse)(nil),          // 35: clients.v1.ListContactsResponse
+	(*CreateContactRequest)(nil),          // 36: clients.v1.CreateContactRequest
+	(*UpdateContactRequest)(nil),          // 37: clients.v1.UpdateContactRequest
+	(*DeleteContactRequest)(nil),          // 38: clients.v1.DeleteContactRequest
+	(*Activity)(nil),                      // 39: clients.v1.Activity
+	(*ActivityInput)(nil),                 // 40: clients.v1.ActivityInput
+	(*ListActivitiesRequest)(nil),         // 41: clients.v1.ListActivitiesRequest
+	(*ListActivitiesResponse)(nil),        // 42: clients.v1.ListActivitiesResponse
+	(*CreateActivityRequest)(nil),         // 43: clients.v1.CreateActivityRequest
+	(*UpdateActivityRequest)(nil),         // 44: clients.v1.UpdateActivityRequest
+	(*DeleteActivityRequest)(nil),         // 45: clients.v1.DeleteActivityRequest
+	(*Exemption)(nil),                     // 46: clients.v1.Exemption
+	(*ExemptionInput)(nil),                // 47: clients.v1.ExemptionInput
+	(*ListExemptionsRequest)(nil),         // 48: clients.v1.ListExemptionsRequest
+	(*ListExemptionsResponse)(nil),        // 49: clients.v1.ListExemptionsResponse
+	(*CreateExemptionRequest)(nil),        // 50: clients.v1.CreateExemptionRequest
+	(*UpdateExemptionRequest)(nil),        // 51: clients.v1.UpdateExemptionRequest
+	(*DeleteExemptionRequest)(nil),        // 52: clients.v1.DeleteExemptionRequest
+	(*CustomTax)(nil),                     // 53: clients.v1.CustomTax
+	(*CustomTaxInput)(nil),                // 54: clients.v1.CustomTaxInput
+	(*ListCustomTaxesRequest)(nil),        // 55: clients.v1.ListCustomTaxesRequest
+	(*ListCustomTaxesResponse)(nil),       // 56: clients.v1.ListCustomTaxesResponse
+	(*CreateCustomTaxRequest)(nil),        // 57: clients.v1.CreateCustomTaxRequest
+	(*UpdateCustomTaxRequest)(nil),        // 58: clients.v1.UpdateCustomTaxRequest
+	(*DeleteCustomTaxRequest)(nil),        // 59: clients.v1.DeleteCustomTaxRequest
+	(*Discount)(nil),                      // 60: clients.v1.Discount
+	(*DiscountInput)(nil),                 // 61: clients.v1.DiscountInput
+	(*ListDiscountsRequest)(nil),          // 62: clients.v1.ListDiscountsRequest
+	(*ListDiscountsResponse)(nil),         // 63: clients.v1.ListDiscountsResponse
+	(*CreateDiscountRequest)(nil),         // 64: clients.v1.CreateDiscountRequest
+	(*UpdateDiscountRequest)(nil),         // 65: clients.v1.UpdateDiscountRequest
+	(*DeleteDiscountRequest)(nil),         // 66: clients.v1.DeleteDiscountRequest
+	(*CreditProfile)(nil),                 // 67: clients.v1.CreditProfile
+	(*CreditProfileInput)(nil),            // 68: clients.v1.CreditProfileInput
+	(*GetCreditProfileRequest)(nil),       // 69: clients.v1.GetCreditProfileRequest
+	(*UpsertCreditProfileRequest)(nil),    // 70: clients.v1.UpsertCreditProfileRequest
+	(*SupplierProfile)(nil),               // 71: clients.v1.SupplierProfile
+	(*SupplierProfileInput)(nil),          // 72: clients.v1.SupplierProfileInput
+	(*GetSupplierProfileRequest)(nil),     // 73: clients.v1.GetSupplierProfileRequest
+	(*UpsertSupplierProfileRequest)(nil),  // 74: clients.v1.UpsertSupplierProfileRequest
+	(*AttachedDocument)(nil),              // 75: clients.v1.AttachedDocument
+	(*AttachedDocumentInput)(nil),         // 76: clients.v1.AttachedDocumentInput
+	(*ListAttachedDocumentsRequest)(nil),  // 77: clients.v1.ListAttachedDocumentsRequest
+	(*ListAttachedDocumentsResponse)(nil), // 78: clients.v1.ListAttachedDocumentsResponse
+	(*CreateAttachedDocumentRequest)(nil), // 79: clients.v1.CreateAttachedDocumentRequest
+	(*UpdateAttachedDocumentRequest)(nil), // 80: clients.v1.UpdateAttachedDocumentRequest
+	(*DeleteAttachedDocumentRequest)(nil), // 81: clients.v1.DeleteAttachedDocumentRequest
+	(*GetAccountStatementRequest)(nil),    // 82: clients.v1.GetAccountStatementRequest
+	(*AccountStatement)(nil),              // 83: clients.v1.AccountStatement
+	(*OutstandingDocument)(nil),           // 84: clients.v1.OutstandingDocument
+	(*AgingBucket)(nil),                   // 85: clients.v1.AgingBucket
+	nil,                                   // 86: clients.v1.MergeClientsResponse.MovedEntry
+	nil,                                   // 87: clients.v1.MergeClientsResponse.ConflictsEntry
+	nil,                                   // 88: clients.v1.ParsedRow.ErrorsEntry
 }
 var file_clients_v1_clients_proto_depIdxs = []int32{
-	0,  // 0: clients.v1.ListClientsResponse.clients:type_name -> clients.v1.Client
-	9,  // 1: clients.v1.LookupClientsResponse.clients:type_name -> clients.v1.ClientRef
-	12, // 2: clients.v1.LookupSuppliersResponse.suppliers:type_name -> clients.v1.SupplierRef
-	15, // 3: clients.v1.GetClientTaxProfileResponse.custom_taxes:type_name -> clients.v1.CustomTaxInfo
-	16, // 4: clients.v1.GetClientTaxProfileResponse.exemption:type_name -> clients.v1.ExemptionInfo
-	21, // 5: clients.v1.ParsedRow.data:type_name -> clients.v1.ImportRow
-	84, // 6: clients.v1.ParsedRow.errors:type_name -> clients.v1.ParsedRow.ErrorsEntry
-	22, // 7: clients.v1.ImportPreviewResponse.rows:type_name -> clients.v1.ParsedRow
-	23, // 8: clients.v1.ImportPreviewResponse.summary:type_name -> clients.v1.ImportSummary
-	24, // 9: clients.v1.ImportPreviewResponse.columns:type_name -> clients.v1.DetectedColumn
-	21, // 10: clients.v1.ImportConfirmRequest.rows:type_name -> clients.v1.ImportRow
-	27, // 11: clients.v1.ImportConfirmResponse.failed:type_name -> clients.v1.ConfirmFailure
-	30, // 12: clients.v1.ListContactsResponse.contacts:type_name -> clients.v1.Contact
-	31, // 13: clients.v1.CreateContactRequest.input:type_name -> clients.v1.ContactInput
-	31, // 14: clients.v1.UpdateContactRequest.input:type_name -> clients.v1.ContactInput
-	37, // 15: clients.v1.ListActivitiesResponse.activities:type_name -> clients.v1.Activity
-	38, // 16: clients.v1.CreateActivityRequest.input:type_name -> clients.v1.ActivityInput
-	38, // 17: clients.v1.UpdateActivityRequest.input:type_name -> clients.v1.ActivityInput
-	44, // 18: clients.v1.ListExemptionsResponse.exemptions:type_name -> clients.v1.Exemption
-	45, // 19: clients.v1.CreateExemptionRequest.input:type_name -> clients.v1.ExemptionInput
-	45, // 20: clients.v1.UpdateExemptionRequest.input:type_name -> clients.v1.ExemptionInput
-	51, // 21: clients.v1.ListCustomTaxesResponse.taxes:type_name -> clients.v1.CustomTax
-	52, // 22: clients.v1.CreateCustomTaxRequest.input:type_name -> clients.v1.CustomTaxInput
-	52, // 23: clients.v1.UpdateCustomTaxRequest.input:type_name -> clients.v1.CustomTaxInput
-	58, // 24: clients.v1.ListDiscountsResponse.discounts:type_name -> clients.v1.Discount
-	59, // 25: clients.v1.CreateDiscountRequest.input:type_name -> clients.v1.DiscountInput
-	59, // 26: clients.v1.UpdateDiscountRequest.input:type_name -> clients.v1.DiscountInput
-	66, // 27: clients.v1.UpsertCreditProfileRequest.input:type_name -> clients.v1.CreditProfileInput
-	70, // 28: clients.v1.UpsertSupplierProfileRequest.input:type_name -> clients.v1.SupplierProfileInput
-	73, // 29: clients.v1.ListAttachedDocumentsResponse.documents:type_name -> clients.v1.AttachedDocument
-	74, // 30: clients.v1.CreateAttachedDocumentRequest.input:type_name -> clients.v1.AttachedDocumentInput
-	74, // 31: clients.v1.UpdateAttachedDocumentRequest.input:type_name -> clients.v1.AttachedDocumentInput
-	82, // 32: clients.v1.AccountStatement.documents:type_name -> clients.v1.OutstandingDocument
-	83, // 33: clients.v1.AccountStatement.aging:type_name -> clients.v1.AgingBucket
-	1,  // 34: clients.v1.ClientsService.CreateClient:input_type -> clients.v1.CreateClientRequest
-	6,  // 35: clients.v1.ClientsService.ListClients:input_type -> clients.v1.ListClientsRequest
-	3,  // 36: clients.v1.ClientsService.GetClient:input_type -> clients.v1.GetClientRequest
-	2,  // 37: clients.v1.ClientsService.UpdateClient:input_type -> clients.v1.UpdateClientRequest
-	4,  // 38: clients.v1.ClientsService.DeleteClient:input_type -> clients.v1.DeleteClientRequest
-	8,  // 39: clients.v1.ClientsService.LookupClients:input_type -> clients.v1.LookupClientsRequest
-	14, // 40: clients.v1.ClientsService.GetClientTaxProfile:input_type -> clients.v1.GetClientTaxProfileRequest
-	18, // 41: clients.v1.ClientsService.ValidateClientContact:input_type -> clients.v1.ValidateClientContactRequest
-	11, // 42: clients.v1.ClientsService.LookupSuppliers:input_type -> clients.v1.LookupSuppliersRequest
-	20, // 43: clients.v1.ClientsService.ImportPreview:input_type -> clients.v1.ImportPreviewRequest
-	26, // 44: clients.v1.ClientsService.ImportConfirm:input_type -> clients.v1.ImportConfirmRequest
-	32, // 45: clients.v1.ClientsService.ListContacts:input_type -> clients.v1.ListContactsRequest
-	34, // 46: clients.v1.ClientsService.CreateContact:input_type -> clients.v1.CreateContactRequest
-	35, // 47: clients.v1.ClientsService.UpdateContact:input_type -> clients.v1.UpdateContactRequest
-	36, // 48: clients.v1.ClientsService.DeleteContact:input_type -> clients.v1.DeleteContactRequest
-	39, // 49: clients.v1.ClientsService.ListActivities:input_type -> clients.v1.ListActivitiesRequest
-	41, // 50: clients.v1.ClientsService.CreateActivity:input_type -> clients.v1.CreateActivityRequest
-	42, // 51: clients.v1.ClientsService.UpdateActivity:input_type -> clients.v1.UpdateActivityRequest
-	43, // 52: clients.v1.ClientsService.DeleteActivity:input_type -> clients.v1.DeleteActivityRequest
-	46, // 53: clients.v1.ClientsService.ListExemptions:input_type -> clients.v1.ListExemptionsRequest
-	48, // 54: clients.v1.ClientsService.CreateExemption:input_type -> clients.v1.CreateExemptionRequest
-	49, // 55: clients.v1.ClientsService.UpdateExemption:input_type -> clients.v1.UpdateExemptionRequest
-	50, // 56: clients.v1.ClientsService.DeleteExemption:input_type -> clients.v1.DeleteExemptionRequest
-	53, // 57: clients.v1.ClientsService.ListCustomTaxes:input_type -> clients.v1.ListCustomTaxesRequest
-	55, // 58: clients.v1.ClientsService.CreateCustomTax:input_type -> clients.v1.CreateCustomTaxRequest
-	56, // 59: clients.v1.ClientsService.UpdateCustomTax:input_type -> clients.v1.UpdateCustomTaxRequest
-	57, // 60: clients.v1.ClientsService.DeleteCustomTax:input_type -> clients.v1.DeleteCustomTaxRequest
-	60, // 61: clients.v1.ClientsService.ListDiscounts:input_type -> clients.v1.ListDiscountsRequest
-	62, // 62: clients.v1.ClientsService.CreateDiscount:input_type -> clients.v1.CreateDiscountRequest
-	63, // 63: clients.v1.ClientsService.UpdateDiscount:input_type -> clients.v1.UpdateDiscountRequest
-	64, // 64: clients.v1.ClientsService.DeleteDiscount:input_type -> clients.v1.DeleteDiscountRequest
-	67, // 65: clients.v1.ClientsService.GetCreditProfile:input_type -> clients.v1.GetCreditProfileRequest
-	68, // 66: clients.v1.ClientsService.UpsertCreditProfile:input_type -> clients.v1.UpsertCreditProfileRequest
-	80, // 67: clients.v1.ClientsService.GetAccountStatement:input_type -> clients.v1.GetAccountStatementRequest
-	71, // 68: clients.v1.ClientsService.GetSupplierProfile:input_type -> clients.v1.GetSupplierProfileRequest
-	72, // 69: clients.v1.ClientsService.UpsertSupplierProfile:input_type -> clients.v1.UpsertSupplierProfileRequest
-	75, // 70: clients.v1.ClientsService.ListAttachedDocuments:input_type -> clients.v1.ListAttachedDocumentsRequest
-	77, // 71: clients.v1.ClientsService.CreateAttachedDocument:input_type -> clients.v1.CreateAttachedDocumentRequest
-	78, // 72: clients.v1.ClientsService.UpdateAttachedDocument:input_type -> clients.v1.UpdateAttachedDocumentRequest
-	79, // 73: clients.v1.ClientsService.DeleteAttachedDocument:input_type -> clients.v1.DeleteAttachedDocumentRequest
-	0,  // 74: clients.v1.ClientsService.CreateClient:output_type -> clients.v1.Client
-	7,  // 75: clients.v1.ClientsService.ListClients:output_type -> clients.v1.ListClientsResponse
-	0,  // 76: clients.v1.ClientsService.GetClient:output_type -> clients.v1.Client
-	0,  // 77: clients.v1.ClientsService.UpdateClient:output_type -> clients.v1.Client
-	5,  // 78: clients.v1.ClientsService.DeleteClient:output_type -> clients.v1.DeleteClientResponse
-	10, // 79: clients.v1.ClientsService.LookupClients:output_type -> clients.v1.LookupClientsResponse
-	17, // 80: clients.v1.ClientsService.GetClientTaxProfile:output_type -> clients.v1.GetClientTaxProfileResponse
-	19, // 81: clients.v1.ClientsService.ValidateClientContact:output_type -> clients.v1.ValidateClientContactResponse
-	13, // 82: clients.v1.ClientsService.LookupSuppliers:output_type -> clients.v1.LookupSuppliersResponse
-	25, // 83: clients.v1.ClientsService.ImportPreview:output_type -> clients.v1.ImportPreviewResponse
-	28, // 84: clients.v1.ClientsService.ImportConfirm:output_type -> clients.v1.ImportConfirmResponse
-	33, // 85: clients.v1.ClientsService.ListContacts:output_type -> clients.v1.ListContactsResponse
-	30, // 86: clients.v1.ClientsService.CreateContact:output_type -> clients.v1.Contact
-	30, // 87: clients.v1.ClientsService.UpdateContact:output_type -> clients.v1.Contact
-	29, // 88: clients.v1.ClientsService.DeleteContact:output_type -> clients.v1.DeleteSubEntityResponse
-	40, // 89: clients.v1.ClientsService.ListActivities:output_type -> clients.v1.ListActivitiesResponse
-	37, // 90: clients.v1.ClientsService.CreateActivity:output_type -> clients.v1.Activity
-	37, // 91: clients.v1.ClientsService.UpdateActivity:output_type -> clients.v1.Activity
-	29, // 92: clients.v1.ClientsService.DeleteActivity:output_type -> clients.v1.DeleteSubEntityResponse
-	47, // 93: clients.v1.ClientsService.ListExemptions:output_type -> clients.v1.ListExemptionsResponse
-	44, // 94: clients.v1.ClientsService.CreateExemption:output_type -> clients.v1.Exemption
-	44, // 95: clients.v1.ClientsService.UpdateExemption:output_type -> clients.v1.Exemption
-	29, // 96: clients.v1.ClientsService.DeleteExemption:output_type -> clients.v1.DeleteSubEntityResponse
-	54, // 97: clients.v1.ClientsService.ListCustomTaxes:output_type -> clients.v1.ListCustomTaxesResponse
-	51, // 98: clients.v1.ClientsService.CreateCustomTax:output_type -> clients.v1.CustomTax
-	51, // 99: clients.v1.ClientsService.UpdateCustomTax:output_type -> clients.v1.CustomTax
-	29, // 100: clients.v1.ClientsService.DeleteCustomTax:output_type -> clients.v1.DeleteSubEntityResponse
-	61, // 101: clients.v1.ClientsService.ListDiscounts:output_type -> clients.v1.ListDiscountsResponse
-	58, // 102: clients.v1.ClientsService.CreateDiscount:output_type -> clients.v1.Discount
-	58, // 103: clients.v1.ClientsService.UpdateDiscount:output_type -> clients.v1.Discount
-	29, // 104: clients.v1.ClientsService.DeleteDiscount:output_type -> clients.v1.DeleteSubEntityResponse
-	65, // 105: clients.v1.ClientsService.GetCreditProfile:output_type -> clients.v1.CreditProfile
-	65, // 106: clients.v1.ClientsService.UpsertCreditProfile:output_type -> clients.v1.CreditProfile
-	81, // 107: clients.v1.ClientsService.GetAccountStatement:output_type -> clients.v1.AccountStatement
-	69, // 108: clients.v1.ClientsService.GetSupplierProfile:output_type -> clients.v1.SupplierProfile
-	69, // 109: clients.v1.ClientsService.UpsertSupplierProfile:output_type -> clients.v1.SupplierProfile
-	76, // 110: clients.v1.ClientsService.ListAttachedDocuments:output_type -> clients.v1.ListAttachedDocumentsResponse
-	73, // 111: clients.v1.ClientsService.CreateAttachedDocument:output_type -> clients.v1.AttachedDocument
-	73, // 112: clients.v1.ClientsService.UpdateAttachedDocument:output_type -> clients.v1.AttachedDocument
-	29, // 113: clients.v1.ClientsService.DeleteAttachedDocument:output_type -> clients.v1.DeleteSubEntityResponse
-	74, // [74:114] is the sub-list for method output_type
-	34, // [34:74] is the sub-list for method input_type
-	34, // [34:34] is the sub-list for extension type_name
-	34, // [34:34] is the sub-list for extension extendee
-	0,  // [0:34] is the sub-list for field type_name
+	86, // 0: clients.v1.MergeClientsResponse.moved:type_name -> clients.v1.MergeClientsResponse.MovedEntry
+	87, // 1: clients.v1.MergeClientsResponse.conflicts:type_name -> clients.v1.MergeClientsResponse.ConflictsEntry
+	0,  // 2: clients.v1.ListClientsResponse.clients:type_name -> clients.v1.Client
+	11, // 3: clients.v1.LookupClientsResponse.clients:type_name -> clients.v1.ClientRef
+	14, // 4: clients.v1.LookupSuppliersResponse.suppliers:type_name -> clients.v1.SupplierRef
+	17, // 5: clients.v1.GetClientTaxProfileResponse.custom_taxes:type_name -> clients.v1.CustomTaxInfo
+	18, // 6: clients.v1.GetClientTaxProfileResponse.exemption:type_name -> clients.v1.ExemptionInfo
+	23, // 7: clients.v1.ParsedRow.data:type_name -> clients.v1.ImportRow
+	88, // 8: clients.v1.ParsedRow.errors:type_name -> clients.v1.ParsedRow.ErrorsEntry
+	24, // 9: clients.v1.ImportPreviewResponse.rows:type_name -> clients.v1.ParsedRow
+	25, // 10: clients.v1.ImportPreviewResponse.summary:type_name -> clients.v1.ImportSummary
+	26, // 11: clients.v1.ImportPreviewResponse.columns:type_name -> clients.v1.DetectedColumn
+	23, // 12: clients.v1.ImportConfirmRequest.rows:type_name -> clients.v1.ImportRow
+	29, // 13: clients.v1.ImportConfirmResponse.failed:type_name -> clients.v1.ConfirmFailure
+	32, // 14: clients.v1.ListContactsResponse.contacts:type_name -> clients.v1.Contact
+	33, // 15: clients.v1.CreateContactRequest.input:type_name -> clients.v1.ContactInput
+	33, // 16: clients.v1.UpdateContactRequest.input:type_name -> clients.v1.ContactInput
+	39, // 17: clients.v1.ListActivitiesResponse.activities:type_name -> clients.v1.Activity
+	40, // 18: clients.v1.CreateActivityRequest.input:type_name -> clients.v1.ActivityInput
+	40, // 19: clients.v1.UpdateActivityRequest.input:type_name -> clients.v1.ActivityInput
+	46, // 20: clients.v1.ListExemptionsResponse.exemptions:type_name -> clients.v1.Exemption
+	47, // 21: clients.v1.CreateExemptionRequest.input:type_name -> clients.v1.ExemptionInput
+	47, // 22: clients.v1.UpdateExemptionRequest.input:type_name -> clients.v1.ExemptionInput
+	53, // 23: clients.v1.ListCustomTaxesResponse.taxes:type_name -> clients.v1.CustomTax
+	54, // 24: clients.v1.CreateCustomTaxRequest.input:type_name -> clients.v1.CustomTaxInput
+	54, // 25: clients.v1.UpdateCustomTaxRequest.input:type_name -> clients.v1.CustomTaxInput
+	60, // 26: clients.v1.ListDiscountsResponse.discounts:type_name -> clients.v1.Discount
+	61, // 27: clients.v1.CreateDiscountRequest.input:type_name -> clients.v1.DiscountInput
+	61, // 28: clients.v1.UpdateDiscountRequest.input:type_name -> clients.v1.DiscountInput
+	68, // 29: clients.v1.UpsertCreditProfileRequest.input:type_name -> clients.v1.CreditProfileInput
+	72, // 30: clients.v1.UpsertSupplierProfileRequest.input:type_name -> clients.v1.SupplierProfileInput
+	75, // 31: clients.v1.ListAttachedDocumentsResponse.documents:type_name -> clients.v1.AttachedDocument
+	76, // 32: clients.v1.CreateAttachedDocumentRequest.input:type_name -> clients.v1.AttachedDocumentInput
+	76, // 33: clients.v1.UpdateAttachedDocumentRequest.input:type_name -> clients.v1.AttachedDocumentInput
+	84, // 34: clients.v1.AccountStatement.documents:type_name -> clients.v1.OutstandingDocument
+	85, // 35: clients.v1.AccountStatement.aging:type_name -> clients.v1.AgingBucket
+	1,  // 36: clients.v1.ClientsService.CreateClient:input_type -> clients.v1.CreateClientRequest
+	8,  // 37: clients.v1.ClientsService.ListClients:input_type -> clients.v1.ListClientsRequest
+	3,  // 38: clients.v1.ClientsService.GetClient:input_type -> clients.v1.GetClientRequest
+	2,  // 39: clients.v1.ClientsService.UpdateClient:input_type -> clients.v1.UpdateClientRequest
+	4,  // 40: clients.v1.ClientsService.DeleteClient:input_type -> clients.v1.DeleteClientRequest
+	6,  // 41: clients.v1.ClientsService.MergeClients:input_type -> clients.v1.MergeClientsRequest
+	10, // 42: clients.v1.ClientsService.LookupClients:input_type -> clients.v1.LookupClientsRequest
+	16, // 43: clients.v1.ClientsService.GetClientTaxProfile:input_type -> clients.v1.GetClientTaxProfileRequest
+	20, // 44: clients.v1.ClientsService.ValidateClientContact:input_type -> clients.v1.ValidateClientContactRequest
+	13, // 45: clients.v1.ClientsService.LookupSuppliers:input_type -> clients.v1.LookupSuppliersRequest
+	22, // 46: clients.v1.ClientsService.ImportPreview:input_type -> clients.v1.ImportPreviewRequest
+	28, // 47: clients.v1.ClientsService.ImportConfirm:input_type -> clients.v1.ImportConfirmRequest
+	34, // 48: clients.v1.ClientsService.ListContacts:input_type -> clients.v1.ListContactsRequest
+	36, // 49: clients.v1.ClientsService.CreateContact:input_type -> clients.v1.CreateContactRequest
+	37, // 50: clients.v1.ClientsService.UpdateContact:input_type -> clients.v1.UpdateContactRequest
+	38, // 51: clients.v1.ClientsService.DeleteContact:input_type -> clients.v1.DeleteContactRequest
+	41, // 52: clients.v1.ClientsService.ListActivities:input_type -> clients.v1.ListActivitiesRequest
+	43, // 53: clients.v1.ClientsService.CreateActivity:input_type -> clients.v1.CreateActivityRequest
+	44, // 54: clients.v1.ClientsService.UpdateActivity:input_type -> clients.v1.UpdateActivityRequest
+	45, // 55: clients.v1.ClientsService.DeleteActivity:input_type -> clients.v1.DeleteActivityRequest
+	48, // 56: clients.v1.ClientsService.ListExemptions:input_type -> clients.v1.ListExemptionsRequest
+	50, // 57: clients.v1.ClientsService.CreateExemption:input_type -> clients.v1.CreateExemptionRequest
+	51, // 58: clients.v1.ClientsService.UpdateExemption:input_type -> clients.v1.UpdateExemptionRequest
+	52, // 59: clients.v1.ClientsService.DeleteExemption:input_type -> clients.v1.DeleteExemptionRequest
+	55, // 60: clients.v1.ClientsService.ListCustomTaxes:input_type -> clients.v1.ListCustomTaxesRequest
+	57, // 61: clients.v1.ClientsService.CreateCustomTax:input_type -> clients.v1.CreateCustomTaxRequest
+	58, // 62: clients.v1.ClientsService.UpdateCustomTax:input_type -> clients.v1.UpdateCustomTaxRequest
+	59, // 63: clients.v1.ClientsService.DeleteCustomTax:input_type -> clients.v1.DeleteCustomTaxRequest
+	62, // 64: clients.v1.ClientsService.ListDiscounts:input_type -> clients.v1.ListDiscountsRequest
+	64, // 65: clients.v1.ClientsService.CreateDiscount:input_type -> clients.v1.CreateDiscountRequest
+	65, // 66: clients.v1.ClientsService.UpdateDiscount:input_type -> clients.v1.UpdateDiscountRequest
+	66, // 67: clients.v1.ClientsService.DeleteDiscount:input_type -> clients.v1.DeleteDiscountRequest
+	69, // 68: clients.v1.ClientsService.GetCreditProfile:input_type -> clients.v1.GetCreditProfileRequest
+	70, // 69: clients.v1.ClientsService.UpsertCreditProfile:input_type -> clients.v1.UpsertCreditProfileRequest
+	82, // 70: clients.v1.ClientsService.GetAccountStatement:input_type -> clients.v1.GetAccountStatementRequest
+	73, // 71: clients.v1.ClientsService.GetSupplierProfile:input_type -> clients.v1.GetSupplierProfileRequest
+	74, // 72: clients.v1.ClientsService.UpsertSupplierProfile:input_type -> clients.v1.UpsertSupplierProfileRequest
+	77, // 73: clients.v1.ClientsService.ListAttachedDocuments:input_type -> clients.v1.ListAttachedDocumentsRequest
+	79, // 74: clients.v1.ClientsService.CreateAttachedDocument:input_type -> clients.v1.CreateAttachedDocumentRequest
+	80, // 75: clients.v1.ClientsService.UpdateAttachedDocument:input_type -> clients.v1.UpdateAttachedDocumentRequest
+	81, // 76: clients.v1.ClientsService.DeleteAttachedDocument:input_type -> clients.v1.DeleteAttachedDocumentRequest
+	0,  // 77: clients.v1.ClientsService.CreateClient:output_type -> clients.v1.Client
+	9,  // 78: clients.v1.ClientsService.ListClients:output_type -> clients.v1.ListClientsResponse
+	0,  // 79: clients.v1.ClientsService.GetClient:output_type -> clients.v1.Client
+	0,  // 80: clients.v1.ClientsService.UpdateClient:output_type -> clients.v1.Client
+	5,  // 81: clients.v1.ClientsService.DeleteClient:output_type -> clients.v1.DeleteClientResponse
+	7,  // 82: clients.v1.ClientsService.MergeClients:output_type -> clients.v1.MergeClientsResponse
+	12, // 83: clients.v1.ClientsService.LookupClients:output_type -> clients.v1.LookupClientsResponse
+	19, // 84: clients.v1.ClientsService.GetClientTaxProfile:output_type -> clients.v1.GetClientTaxProfileResponse
+	21, // 85: clients.v1.ClientsService.ValidateClientContact:output_type -> clients.v1.ValidateClientContactResponse
+	15, // 86: clients.v1.ClientsService.LookupSuppliers:output_type -> clients.v1.LookupSuppliersResponse
+	27, // 87: clients.v1.ClientsService.ImportPreview:output_type -> clients.v1.ImportPreviewResponse
+	30, // 88: clients.v1.ClientsService.ImportConfirm:output_type -> clients.v1.ImportConfirmResponse
+	35, // 89: clients.v1.ClientsService.ListContacts:output_type -> clients.v1.ListContactsResponse
+	32, // 90: clients.v1.ClientsService.CreateContact:output_type -> clients.v1.Contact
+	32, // 91: clients.v1.ClientsService.UpdateContact:output_type -> clients.v1.Contact
+	31, // 92: clients.v1.ClientsService.DeleteContact:output_type -> clients.v1.DeleteSubEntityResponse
+	42, // 93: clients.v1.ClientsService.ListActivities:output_type -> clients.v1.ListActivitiesResponse
+	39, // 94: clients.v1.ClientsService.CreateActivity:output_type -> clients.v1.Activity
+	39, // 95: clients.v1.ClientsService.UpdateActivity:output_type -> clients.v1.Activity
+	31, // 96: clients.v1.ClientsService.DeleteActivity:output_type -> clients.v1.DeleteSubEntityResponse
+	49, // 97: clients.v1.ClientsService.ListExemptions:output_type -> clients.v1.ListExemptionsResponse
+	46, // 98: clients.v1.ClientsService.CreateExemption:output_type -> clients.v1.Exemption
+	46, // 99: clients.v1.ClientsService.UpdateExemption:output_type -> clients.v1.Exemption
+	31, // 100: clients.v1.ClientsService.DeleteExemption:output_type -> clients.v1.DeleteSubEntityResponse
+	56, // 101: clients.v1.ClientsService.ListCustomTaxes:output_type -> clients.v1.ListCustomTaxesResponse
+	53, // 102: clients.v1.ClientsService.CreateCustomTax:output_type -> clients.v1.CustomTax
+	53, // 103: clients.v1.ClientsService.UpdateCustomTax:output_type -> clients.v1.CustomTax
+	31, // 104: clients.v1.ClientsService.DeleteCustomTax:output_type -> clients.v1.DeleteSubEntityResponse
+	63, // 105: clients.v1.ClientsService.ListDiscounts:output_type -> clients.v1.ListDiscountsResponse
+	60, // 106: clients.v1.ClientsService.CreateDiscount:output_type -> clients.v1.Discount
+	60, // 107: clients.v1.ClientsService.UpdateDiscount:output_type -> clients.v1.Discount
+	31, // 108: clients.v1.ClientsService.DeleteDiscount:output_type -> clients.v1.DeleteSubEntityResponse
+	67, // 109: clients.v1.ClientsService.GetCreditProfile:output_type -> clients.v1.CreditProfile
+	67, // 110: clients.v1.ClientsService.UpsertCreditProfile:output_type -> clients.v1.CreditProfile
+	83, // 111: clients.v1.ClientsService.GetAccountStatement:output_type -> clients.v1.AccountStatement
+	71, // 112: clients.v1.ClientsService.GetSupplierProfile:output_type -> clients.v1.SupplierProfile
+	71, // 113: clients.v1.ClientsService.UpsertSupplierProfile:output_type -> clients.v1.SupplierProfile
+	78, // 114: clients.v1.ClientsService.ListAttachedDocuments:output_type -> clients.v1.ListAttachedDocumentsResponse
+	75, // 115: clients.v1.ClientsService.CreateAttachedDocument:output_type -> clients.v1.AttachedDocument
+	75, // 116: clients.v1.ClientsService.UpdateAttachedDocument:output_type -> clients.v1.AttachedDocument
+	31, // 117: clients.v1.ClientsService.DeleteAttachedDocument:output_type -> clients.v1.DeleteSubEntityResponse
+	77, // [77:118] is the sub-list for method output_type
+	36, // [36:77] is the sub-list for method input_type
+	36, // [36:36] is the sub-list for extension type_name
+	36, // [36:36] is the sub-list for extension extendee
+	0,  // [0:36] is the sub-list for field type_name
 }
 
 func init() { file_clients_v1_clients_proto_init() }
@@ -8434,23 +8643,23 @@ func file_clients_v1_clients_proto_init() {
 	}
 	file_clients_v1_clients_proto_msgTypes[1].OneofWrappers = []any{}
 	file_clients_v1_clients_proto_msgTypes[2].OneofWrappers = []any{}
-	file_clients_v1_clients_proto_msgTypes[14].OneofWrappers = []any{}
-	file_clients_v1_clients_proto_msgTypes[17].OneofWrappers = []any{}
-	file_clients_v1_clients_proto_msgTypes[22].OneofWrappers = []any{}
-	file_clients_v1_clients_proto_msgTypes[31].OneofWrappers = []any{}
-	file_clients_v1_clients_proto_msgTypes[38].OneofWrappers = []any{}
-	file_clients_v1_clients_proto_msgTypes[44].OneofWrappers = []any{}
-	file_clients_v1_clients_proto_msgTypes[45].OneofWrappers = []any{}
-	file_clients_v1_clients_proto_msgTypes[52].OneofWrappers = []any{}
-	file_clients_v1_clients_proto_msgTypes[59].OneofWrappers = []any{}
-	file_clients_v1_clients_proto_msgTypes[74].OneofWrappers = []any{}
+	file_clients_v1_clients_proto_msgTypes[16].OneofWrappers = []any{}
+	file_clients_v1_clients_proto_msgTypes[19].OneofWrappers = []any{}
+	file_clients_v1_clients_proto_msgTypes[24].OneofWrappers = []any{}
+	file_clients_v1_clients_proto_msgTypes[33].OneofWrappers = []any{}
+	file_clients_v1_clients_proto_msgTypes[40].OneofWrappers = []any{}
+	file_clients_v1_clients_proto_msgTypes[46].OneofWrappers = []any{}
+	file_clients_v1_clients_proto_msgTypes[47].OneofWrappers = []any{}
+	file_clients_v1_clients_proto_msgTypes[54].OneofWrappers = []any{}
+	file_clients_v1_clients_proto_msgTypes[61].OneofWrappers = []any{}
+	file_clients_v1_clients_proto_msgTypes[76].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_clients_v1_clients_proto_rawDesc), len(file_clients_v1_clients_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   85,
+			NumMessages:   89,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
