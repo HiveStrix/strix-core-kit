@@ -64,6 +64,7 @@ const (
 	ClientsService_DeleteDiscount_FullMethodName         = "/clients.v1.ClientsService/DeleteDiscount"
 	ClientsService_GetCreditProfile_FullMethodName       = "/clients.v1.ClientsService/GetCreditProfile"
 	ClientsService_UpsertCreditProfile_FullMethodName    = "/clients.v1.ClientsService/UpsertCreditProfile"
+	ClientsService_GetAccountStatement_FullMethodName    = "/clients.v1.ClientsService/GetAccountStatement"
 	ClientsService_GetSupplierProfile_FullMethodName     = "/clients.v1.ClientsService/GetSupplierProfile"
 	ClientsService_UpsertSupplierProfile_FullMethodName  = "/clients.v1.ClientsService/UpsertSupplierProfile"
 	ClientsService_ListAttachedDocuments_FullMethodName  = "/clients.v1.ClientsService/ListAttachedDocuments"
@@ -149,6 +150,11 @@ type ClientsServiceClient interface {
 	// ── Sub-entidades: perfil crediticio (1:1) ────────────────────
 	GetCreditProfile(ctx context.Context, in *GetCreditProfileRequest, opts ...grpc.CallOption) (*CreditProfile, error)
 	UpsertCreditProfile(ctx context.Context, in *UpsertCreditProfileRequest, opts ...grpc.CallOption) (*CreditProfile, error)
+	// ── Estado de cuenta: crédito disponible + documentos vivos ────
+	// Lectura compuesta: el LÍMITE es dato propio (client_credit_profiles); el
+	// SALDO y los documentos vienen de core-billing por su API. Es lectura
+	// fail-soft — si billing no responde, se muestra el límite y nada más.
+	GetAccountStatement(ctx context.Context, in *GetAccountStatementRequest, opts ...grpc.CallOption) (*AccountStatement, error)
 	// ── Sub-entidad: perfil de proveedor (1:1) ─────────────────────
 	GetSupplierProfile(ctx context.Context, in *GetSupplierProfileRequest, opts ...grpc.CallOption) (*SupplierProfile, error)
 	UpsertSupplierProfile(ctx context.Context, in *UpsertSupplierProfileRequest, opts ...grpc.CallOption) (*SupplierProfile, error)
@@ -497,6 +503,16 @@ func (c *clientsServiceClient) UpsertCreditProfile(ctx context.Context, in *Upse
 	return out, nil
 }
 
+func (c *clientsServiceClient) GetAccountStatement(ctx context.Context, in *GetAccountStatementRequest, opts ...grpc.CallOption) (*AccountStatement, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AccountStatement)
+	err := c.cc.Invoke(ctx, ClientsService_GetAccountStatement_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *clientsServiceClient) GetSupplierProfile(ctx context.Context, in *GetSupplierProfileRequest, opts ...grpc.CallOption) (*SupplierProfile, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(SupplierProfile)
@@ -634,6 +650,11 @@ type ClientsServiceServer interface {
 	// ── Sub-entidades: perfil crediticio (1:1) ────────────────────
 	GetCreditProfile(context.Context, *GetCreditProfileRequest) (*CreditProfile, error)
 	UpsertCreditProfile(context.Context, *UpsertCreditProfileRequest) (*CreditProfile, error)
+	// ── Estado de cuenta: crédito disponible + documentos vivos ────
+	// Lectura compuesta: el LÍMITE es dato propio (client_credit_profiles); el
+	// SALDO y los documentos vienen de core-billing por su API. Es lectura
+	// fail-soft — si billing no responde, se muestra el límite y nada más.
+	GetAccountStatement(context.Context, *GetAccountStatementRequest) (*AccountStatement, error)
 	// ── Sub-entidad: perfil de proveedor (1:1) ─────────────────────
 	GetSupplierProfile(context.Context, *GetSupplierProfileRequest) (*SupplierProfile, error)
 	UpsertSupplierProfile(context.Context, *UpsertSupplierProfileRequest) (*SupplierProfile, error)
@@ -750,6 +771,9 @@ func (UnimplementedClientsServiceServer) GetCreditProfile(context.Context, *GetC
 }
 func (UnimplementedClientsServiceServer) UpsertCreditProfile(context.Context, *UpsertCreditProfileRequest) (*CreditProfile, error) {
 	return nil, status.Error(codes.Unimplemented, "method UpsertCreditProfile not implemented")
+}
+func (UnimplementedClientsServiceServer) GetAccountStatement(context.Context, *GetAccountStatementRequest) (*AccountStatement, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetAccountStatement not implemented")
 }
 func (UnimplementedClientsServiceServer) GetSupplierProfile(context.Context, *GetSupplierProfileRequest) (*SupplierProfile, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetSupplierProfile not implemented")
@@ -1384,6 +1408,24 @@ func _ClientsService_UpsertCreditProfile_Handler(srv interface{}, ctx context.Co
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ClientsService_GetAccountStatement_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetAccountStatementRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ClientsServiceServer).GetAccountStatement(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ClientsService_GetAccountStatement_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ClientsServiceServer).GetAccountStatement(ctx, req.(*GetAccountStatementRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ClientsService_GetSupplierProfile_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetSupplierProfileRequest)
 	if err := dec(in); err != nil {
@@ -1630,6 +1672,10 @@ var ClientsService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "UpsertCreditProfile",
 			Handler:    _ClientsService_UpsertCreditProfile_Handler,
+		},
+		{
+			MethodName: "GetAccountStatement",
+			Handler:    _ClientsService_GetAccountStatement_Handler,
 		},
 		{
 			MethodName: "GetSupplierProfile",

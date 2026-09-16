@@ -6790,6 +6790,597 @@ func (x *DeleteAttachedDocumentRequest) GetId() uint32 {
 	return 0
 }
 
+type GetAccountStatementRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ClientId      uint32                 `protobuf:"varint,1,opt,name=client_id,json=clientId,proto3" json:"client_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetAccountStatementRequest) Reset() {
+	*x = GetAccountStatementRequest{}
+	mi := &file_clients_v1_clients_proto_msgTypes[80]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetAccountStatementRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetAccountStatementRequest) ProtoMessage() {}
+
+func (x *GetAccountStatementRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_clients_v1_clients_proto_msgTypes[80]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetAccountStatementRequest.ProtoReflect.Descriptor instead.
+func (*GetAccountStatementRequest) Descriptor() ([]byte, []int) {
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{80}
+}
+
+func (x *GetAccountStatementRequest) GetClientId() uint32 {
+	if x != nil {
+		return x.ClientId
+	}
+	return 0
+}
+
+// AccountStatement compone el límite propio con el saldo y los documentos que
+// vienen de core-billing.
+//
+// billing_available separa "billing dijo que 0" de "billing no pudo
+// responder": cuando es false, pending_balance / available_credit /
+// open_documents_count / documents NO son de fiar y la UI muestra sólo el
+// límite. NUNCA se fabrica un saldo cero en ese caso — misma honestidad que
+// HasOpenObligationsResponse.pending_balance en billing.
+type AccountStatement struct {
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	CreditLimit float64                `protobuf:"fixed64,1,opt,name=credit_limit,json=creditLimit,proto3" json:"credit_limit,omitempty"`
+	// Saldo pendiente confirmado (FE/TE/ND ACCEPTED, neto de aplicaciones), tal
+	// como lo calcula billing. Vacío si no se conoce.
+	PendingBalance string `protobuf:"bytes,2,opt,name=pending_balance,json=pendingBalance,proto3" json:"pending_balance,omitempty"`
+	// available_credit = credit_limit - pending_balance, sólo cuando hay límite
+	// (> 0) y saldo conocido. La UI no muestra "disponible" sin límite fijado.
+	AvailableCredit    float64                `protobuf:"fixed64,3,opt,name=available_credit,json=availableCredit,proto3" json:"available_credit,omitempty"`
+	OpenDocumentsCount uint32                 `protobuf:"varint,4,opt,name=open_documents_count,json=openDocumentsCount,proto3" json:"open_documents_count,omitempty"`
+	BillingAvailable   bool                   `protobuf:"varint,5,opt,name=billing_available,json=billingAvailable,proto3" json:"billing_available,omitempty"`
+	Documents          []*OutstandingDocument `protobuf:"bytes,6,rep,name=documents,proto3" json:"documents,omitempty"`
+	// Antigüedad de saldos (C3). SIEMPRE los seis tramos, en este orden fijo —
+	// al_dia, 1_30, 31_60, 61_90, mas_90, sin_vencimiento — aunque estén
+	// vacíos, para que la barra y su leyenda no reordenen entre respuestas.
+	// Lista vacía (0 elementos, no 6 en cero) cuando billing_available es
+	// false: sin documentos no hay qué agrupar.
+	Aging []*AgingBucket `protobuf:"bytes,7,rep,name=aging,proto3" json:"aging,omitempty"`
+	// Fecha civil (YYYY-MM-DD) contra la que se calculó el aging.
+	AgingAsOf string `protobuf:"bytes,8,opt,name=aging_as_of,json=agingAsOf,proto3" json:"aging_as_of,omitempty"`
+	// documents_available separa "este cliente no tiene comprobantes por cobrar"
+	// de "no se pudieron traer". Los documentos NO salen del mismo rpc que el
+	// saldo: el saldo y el conteo vienen de DocumentsService.HasOpenObligations
+	// (entitlement `invoices.read`) y la lista de
+	// PaymentsService.ListOutstandingDocuments (entitlement `receivables.read`),
+	// así que un rol con Facturación pero sin Cuentas por cobrar recibe el saldo
+	// y un PermissionDenied en la lista. Sin este campo, la UI pintaba «este
+	// cliente no tiene comprobantes por cobrar» junto a un saldo distinto de
+	// cero — una pantalla que se contradice a sí misma.
+	//
+	// Con billing_available en false esto también es false: no se llegó a pedir
+	// la lista. Sólo billing_available && !documents_available significa "el
+	// saldo de arriba es de Facturación, la lista no se pudo traer".
+	DocumentsAvailable bool `protobuf:"varint,9,opt,name=documents_available,json=documentsAvailable,proto3" json:"documents_available,omitempty"`
+	// ── Respaldo cacheado (C6a/C6b, R-cache-no-manda) ──────────────────
+	//
+	// Sólo tiene sentido leerlo cuando billing_available es false: billing
+	// manda siempre que responde, y estos campos NUNCA reemplazan a
+	// pending_balance de arriba — son campos APARTE a propósito, para que
+	// ningún cliente de este contrato pueda confundir un número fresco con
+	// uno cacheado por leer el campo equivocado.
+	//
+	// Se sostiene en dos mecanismos (ver events/catalog.yaml, sección
+	// `consumes`, y internal/service/billing_events.go): SEMBRADO, cada
+	// lectura en vivo exitosa deja su cifra guardada acá; y AJUSTE por delta
+	// desde los eventos de cobro de billing (pago aplicado, nota de crédito
+	// aplicada suman/restan lo aplicado; el veredicto fiscal de un
+	// comprobante suma su total al ser ACEPTADO). El conjunto que cuenta es
+	// EXACTAMENTE el que usa la autoridad de billing para su propio número
+	// (doc_type FE/TE/ND, status ACCEPTED) — no una aproximación.
+	//
+	// cached_available en false es "billing no contestó Y tampoco hay ningún
+	// respaldo sembrado" (la ficha de este cliente nunca se abrió mientras
+	// billing SÍ contestaba) — la UI se queda mostrando solo el límite, como
+	// antes de C6a/C6b. Por eso SIEMPRE se muestra junto a cached_as_of, nunca
+	// como si fuera un saldo fresco.
+	CachedAvailable bool `protobuf:"varint,10,opt,name=cached_available,json=cachedAvailable,proto3" json:"cached_available,omitempty"`
+	// El respaldo cacheado (decimal, nunca float): la última lectura en vivo
+	// sembrada, ajustada por delta por cada evento de cobro posterior. Vacío
+	// cuando cached_available es false, o cuando cached_negative es true (ver
+	// abajo) — un ajuste aplicado dos veces puede volver este número
+	// negativo, y ahí se vacía en vez de mostrarse o pisarse con cero.
+	//
+	// Viaja con CINCO decimales (numeric(18,5) del lado de este core, para no
+	// perder precisión frente a los montos NUMERIC(18,5) de billing): "12345.67"
+	// sembrado vuelve como "12345.67000". La ficha lo pasa por su formateador
+	// de dinero, que no le importan los ceros de más.
+	CachedPendingBalance string `protobuf:"bytes,11,opt,name=cached_pending_balance,json=cachedPendingBalance,proto3" json:"cached_pending_balance,omitempty"`
+	// SIEMPRE CRC, puesta por el sembrado -- billing tampoco distingue moneda
+	// en su propio saldo hoy, así que la etiqueta ya es tan precisa como la
+	// fuente. Un evento de cobro en otra moneda NUNCA la pisa (el número sí
+	// puede sumar montos de varias monedas, mismo costo ya aceptado para
+	// pending_balance de arriba, pero la etiqueta se queda fija).
+	CachedCurrency string `protobuf:"bytes,12,opt,name=cached_currency,json=cachedCurrency,proto3" json:"cached_currency,omitempty"`
+	// Instante de corte del respaldo, RFC 3339. Es la fecha que la UI tiene
+	// que mostrar SIEMPRE junto al número de cached_pending_balance — nunca
+	// se presenta esa cifra sin ella.
+	CachedAsOf string `protobuf:"bytes,13,opt,name=cached_as_of,json=cachedAsOf,proto3" json:"cached_as_of,omitempty"`
+	// true cuando el respaldo cacheado resultó en un número NEGATIVO -- un
+	// estado que nunca puede ser verdad (nadie debe dinero negativo), señal
+	// de que un ajuste se aplicó dos veces. Con esto en true,
+	// cached_pending_balance viaja VACÍO a propósito: la UI tiene que decir
+	// que este respaldo no es confiable y hace falta una lectura fresca de
+	// Facturación, nunca mostrar el número dañado ni inventar un cero que
+	// parezca sano.
+	CachedNegative bool `protobuf:"varint,14,opt,name=cached_negative,json=cachedNegative,proto3" json:"cached_negative,omitempty"`
+	// billing_denied separa la NEGATIVA de Facturación de su CAÍDA. Sólo
+	// tiene sentido leerlo cuando billing_available es false.
+	//
+	// Facturación protege esta lectura POR CLIENTE (acción `invoices.read`
+	// sobre resource_type "customer", con el id del cliente como recurso) y
+	// también deniega cuando la empresa no tiene el módulo `invoices`
+	// contratado. Las dos cosas llegan acá como billing_denied.
+	//
+	// CON ESTO EN true, TODOS LOS CAMPOS cached_* VIAJAN VACÍOS a propósito:
+	// el respaldo cacheado lo siembran las lecturas de los usuarios que SÍ
+	// tienen permiso, así que servirlo a quien Facturación acaba de rechazar
+	// convertiría este core en la puerta de atrás del permiso que el otro
+	// acaba de cerrar. No hay cifra que mostrar, ni fresca ni vieja.
+	//
+	// La UI tiene que DECIR eso: «no disponible» es verdad de una caída —algo
+	// que se arregla reintentando— y engañoso de una negativa, donde no hay
+	// nada que reintentar y lo que falta es un permiso.
+	BillingDenied bool `protobuf:"varint,15,opt,name=billing_denied,json=billingDenied,proto3" json:"billing_denied,omitempty"`
+	// billing_not_deployed es la TOPOLOGÍA, no una falla ni una negativa: este
+	// despliegue no tiene core-billing configurado. Sólo tiene sentido leerlo
+	// cuando billing_available es false.
+	//
+	// Existe porque sin él la ficha afirmaba dos cosas FALSAS sobre el cliente a
+	// partir de un hecho sobre la instalación. Con el guard vacío, el resumen
+	// volvía sin saldo y la lista volvía vacía SIN error, así que este core
+	// respondía billing_available=true, documents_available=true y cero
+	// documentos: la pantalla mostraba «Disponible = el límite entero» (no había
+	// saldo que restarle) y «Este cliente no tiene comprobantes por cobrar». Ni
+	// el disponible ni el vacío eran datos: eran la ausencia del módulo que los
+	// produce, contada como si fuera información del cliente.
+	//
+	// Con esto en true no viaja ninguna cifra de Facturación —tampoco la
+	// cacheada, que no tendría cómo actualizarse nunca— y la ficha dice lo único
+	// cierto: acá no hay Facturación, el límite de crédito es todo lo que esta
+	// pantalla sabe.
+	BillingNotDeployed bool `protobuf:"varint,16,opt,name=billing_not_deployed,json=billingNotDeployed,proto3" json:"billing_not_deployed,omitempty"`
+	// documents_terms_unknown cuenta los documentos de `documents` cuyas
+	// CONDICIONES DE PAGO no se pudieron traer -- el GetDocument por documento
+	// que hidrata fecha_emision/condicion_venta/plazo_credito falló o se quedó
+	// sin presupuesto (ver el enriquecimiento en internal/integration/billing.go).
+	//
+	// Son los mismos documentos que caen en el tramo `sin_vencimiento` del aging,
+	// y por eso hace falta este número aparte: sin él, la ficha decía «N
+	// documentos sin vencimiento declarado», que es una propiedad de ESOS
+	// documentos, cuando la verdad podía ser que sus condiciones existen y este
+	// core no las pudo leer. documents_available no cubre el caso: separa que
+	// falle LA LISTA, no que falle el enriquecimiento de una lista que sí llegó.
+	//
+	// count(sin_vencimiento) − documents_terms_unknown son los que de verdad no
+	// declaran vencimiento.
+	DocumentsTermsUnknown uint32 `protobuf:"varint,17,opt,name=documents_terms_unknown,json=documentsTermsUnknown,proto3" json:"documents_terms_unknown,omitempty"`
+	unknownFields         protoimpl.UnknownFields
+	sizeCache             protoimpl.SizeCache
+}
+
+func (x *AccountStatement) Reset() {
+	*x = AccountStatement{}
+	mi := &file_clients_v1_clients_proto_msgTypes[81]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AccountStatement) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AccountStatement) ProtoMessage() {}
+
+func (x *AccountStatement) ProtoReflect() protoreflect.Message {
+	mi := &file_clients_v1_clients_proto_msgTypes[81]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AccountStatement.ProtoReflect.Descriptor instead.
+func (*AccountStatement) Descriptor() ([]byte, []int) {
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{81}
+}
+
+func (x *AccountStatement) GetCreditLimit() float64 {
+	if x != nil {
+		return x.CreditLimit
+	}
+	return 0
+}
+
+func (x *AccountStatement) GetPendingBalance() string {
+	if x != nil {
+		return x.PendingBalance
+	}
+	return ""
+}
+
+func (x *AccountStatement) GetAvailableCredit() float64 {
+	if x != nil {
+		return x.AvailableCredit
+	}
+	return 0
+}
+
+func (x *AccountStatement) GetOpenDocumentsCount() uint32 {
+	if x != nil {
+		return x.OpenDocumentsCount
+	}
+	return 0
+}
+
+func (x *AccountStatement) GetBillingAvailable() bool {
+	if x != nil {
+		return x.BillingAvailable
+	}
+	return false
+}
+
+func (x *AccountStatement) GetDocuments() []*OutstandingDocument {
+	if x != nil {
+		return x.Documents
+	}
+	return nil
+}
+
+func (x *AccountStatement) GetAging() []*AgingBucket {
+	if x != nil {
+		return x.Aging
+	}
+	return nil
+}
+
+func (x *AccountStatement) GetAgingAsOf() string {
+	if x != nil {
+		return x.AgingAsOf
+	}
+	return ""
+}
+
+func (x *AccountStatement) GetDocumentsAvailable() bool {
+	if x != nil {
+		return x.DocumentsAvailable
+	}
+	return false
+}
+
+func (x *AccountStatement) GetCachedAvailable() bool {
+	if x != nil {
+		return x.CachedAvailable
+	}
+	return false
+}
+
+func (x *AccountStatement) GetCachedPendingBalance() string {
+	if x != nil {
+		return x.CachedPendingBalance
+	}
+	return ""
+}
+
+func (x *AccountStatement) GetCachedCurrency() string {
+	if x != nil {
+		return x.CachedCurrency
+	}
+	return ""
+}
+
+func (x *AccountStatement) GetCachedAsOf() string {
+	if x != nil {
+		return x.CachedAsOf
+	}
+	return ""
+}
+
+func (x *AccountStatement) GetCachedNegative() bool {
+	if x != nil {
+		return x.CachedNegative
+	}
+	return false
+}
+
+func (x *AccountStatement) GetBillingDenied() bool {
+	if x != nil {
+		return x.BillingDenied
+	}
+	return false
+}
+
+func (x *AccountStatement) GetBillingNotDeployed() bool {
+	if x != nil {
+		return x.BillingNotDeployed
+	}
+	return false
+}
+
+func (x *AccountStatement) GetDocumentsTermsUnknown() uint32 {
+	if x != nil {
+		return x.DocumentsTermsUnknown
+	}
+	return 0
+}
+
+// OutstandingDocument es el saldo de UN comprobante, espejo de
+// billing.DocumentBalance. doc_type viaja como código corto (FE/TE/NC/ND/...)
+// para no arrastrar el enum de billing a la superficie REST de este core.
+type OutstandingDocument struct {
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	DocumentId       string                 `protobuf:"bytes,1,opt,name=document_id,json=documentId,proto3" json:"document_id,omitempty"`
+	DocType          string                 `protobuf:"bytes,2,opt,name=doc_type,json=docType,proto3" json:"doc_type,omitempty"`
+	Consecutivo      string                 `protobuf:"bytes,3,opt,name=consecutivo,proto3" json:"consecutivo,omitempty"`
+	Moneda           string                 `protobuf:"bytes,4,opt,name=moneda,proto3" json:"moneda,omitempty"`
+	TotalComprobante string                 `protobuf:"bytes,5,opt,name=total_comprobante,json=totalComprobante,proto3" json:"total_comprobante,omitempty"`
+	MontoAplicado    string                 `protobuf:"bytes,6,opt,name=monto_aplicado,json=montoAplicado,proto3" json:"monto_aplicado,omitempty"`
+	// saldo — sólo documentos deudores (FE/TE/ND); vacío en una NC.
+	Saldo string `protobuf:"bytes,7,opt,name=saldo,proto3" json:"saldo,omitempty"`
+	// credito_disponible — sólo una nota de crédito; vacío en el resto.
+	CreditoDisponible string `protobuf:"bytes,8,opt,name=credito_disponible,json=creditoDisponible,proto3" json:"credito_disponible,omitempty"`
+	// Antigüedad (C3), calculada por el servicio — no viene de billing.
+	// fecha_emision es fecha CIVIL (YYYY-MM-DD), no el RFC3339 que devuelve
+	// billing.Document; vacía si no se pudo leer.
+	FechaEmision string `protobuf:"bytes,9,opt,name=fecha_emision,json=fechaEmision,proto3" json:"fecha_emision,omitempty"`
+	// due_date — "" cuando el vencimiento es desconocido (ver la regla de
+	// vencimiento en internal/clients/aging.go).
+	DueDate string `protobuf:"bytes,10,opt,name=due_date,json=dueDate,proto3" json:"due_date,omitempty"`
+	// days_overdue — 0 cuando el vencimiento es desconocido. La UI lee
+	// aging_bucket para distinguir "al día" de "desconocido", no este 0.
+	DaysOverdue int32 `protobuf:"varint,11,opt,name=days_overdue,json=daysOverdue,proto3" json:"days_overdue,omitempty"`
+	// aging_bucket — uno de los seis tramos fijos de AccountStatement.aging.
+	AgingBucket string `protobuf:"bytes,12,opt,name=aging_bucket,json=agingBucket,proto3" json:"aging_bucket,omitempty"`
+	// terms_unknown: el GetDocument que hidrata fecha_emision, condicion_venta y
+	// plazo_credito falló para ESTE documento (fail-soft por documento). Con esto
+	// en true, fecha_emision y due_date vienen vacíos y aging_bucket es
+	// `sin_vencimiento` porque NO SE PUDO PREGUNTAR -- no porque el comprobante
+	// carezca de vencimiento. La ficha tiene que pintar esas dos celdas distinto:
+	// un guion dice "este documento no vence", y eso no se sabe.
+	TermsUnknown  bool `protobuf:"varint,13,opt,name=terms_unknown,json=termsUnknown,proto3" json:"terms_unknown,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *OutstandingDocument) Reset() {
+	*x = OutstandingDocument{}
+	mi := &file_clients_v1_clients_proto_msgTypes[82]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *OutstandingDocument) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*OutstandingDocument) ProtoMessage() {}
+
+func (x *OutstandingDocument) ProtoReflect() protoreflect.Message {
+	mi := &file_clients_v1_clients_proto_msgTypes[82]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use OutstandingDocument.ProtoReflect.Descriptor instead.
+func (*OutstandingDocument) Descriptor() ([]byte, []int) {
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{82}
+}
+
+func (x *OutstandingDocument) GetDocumentId() string {
+	if x != nil {
+		return x.DocumentId
+	}
+	return ""
+}
+
+func (x *OutstandingDocument) GetDocType() string {
+	if x != nil {
+		return x.DocType
+	}
+	return ""
+}
+
+func (x *OutstandingDocument) GetConsecutivo() string {
+	if x != nil {
+		return x.Consecutivo
+	}
+	return ""
+}
+
+func (x *OutstandingDocument) GetMoneda() string {
+	if x != nil {
+		return x.Moneda
+	}
+	return ""
+}
+
+func (x *OutstandingDocument) GetTotalComprobante() string {
+	if x != nil {
+		return x.TotalComprobante
+	}
+	return ""
+}
+
+func (x *OutstandingDocument) GetMontoAplicado() string {
+	if x != nil {
+		return x.MontoAplicado
+	}
+	return ""
+}
+
+func (x *OutstandingDocument) GetSaldo() string {
+	if x != nil {
+		return x.Saldo
+	}
+	return ""
+}
+
+func (x *OutstandingDocument) GetCreditoDisponible() string {
+	if x != nil {
+		return x.CreditoDisponible
+	}
+	return ""
+}
+
+func (x *OutstandingDocument) GetFechaEmision() string {
+	if x != nil {
+		return x.FechaEmision
+	}
+	return ""
+}
+
+func (x *OutstandingDocument) GetDueDate() string {
+	if x != nil {
+		return x.DueDate
+	}
+	return ""
+}
+
+func (x *OutstandingDocument) GetDaysOverdue() int32 {
+	if x != nil {
+		return x.DaysOverdue
+	}
+	return 0
+}
+
+func (x *OutstandingDocument) GetAgingBucket() string {
+	if x != nil {
+		return x.AgingBucket
+	}
+	return ""
+}
+
+func (x *OutstandingDocument) GetTermsUnknown() bool {
+	if x != nil {
+		return x.TermsUnknown
+	}
+	return false
+}
+
+// AgingBucket es un tramo de antigüedad de saldos: cuántos documentos
+// pendientes caen en él y cuánto suman en CRC. to_days = -1 para "más de 90"
+// (mas_90, sin techo); from_days/to_days = 0/0 para al_dia y sin_vencimiento
+// porque no son un rango de días — son una condición. total es una cadena
+// decimal en CRC: los documentos de otra moneda se CUENTAN en foreign_count
+// y no se mezclan al total.
+type AgingBucket struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Key           string                 `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
+	FromDays      int32                  `protobuf:"varint,2,opt,name=from_days,json=fromDays,proto3" json:"from_days,omitempty"`
+	ToDays        int32                  `protobuf:"varint,3,opt,name=to_days,json=toDays,proto3" json:"to_days,omitempty"`
+	Count         uint32                 `protobuf:"varint,4,opt,name=count,proto3" json:"count,omitempty"`
+	Total         string                 `protobuf:"bytes,5,opt,name=total,proto3" json:"total,omitempty"`
+	ForeignCount  uint32                 `protobuf:"varint,6,opt,name=foreign_count,json=foreignCount,proto3" json:"foreign_count,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AgingBucket) Reset() {
+	*x = AgingBucket{}
+	mi := &file_clients_v1_clients_proto_msgTypes[83]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AgingBucket) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AgingBucket) ProtoMessage() {}
+
+func (x *AgingBucket) ProtoReflect() protoreflect.Message {
+	mi := &file_clients_v1_clients_proto_msgTypes[83]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AgingBucket.ProtoReflect.Descriptor instead.
+func (*AgingBucket) Descriptor() ([]byte, []int) {
+	return file_clients_v1_clients_proto_rawDescGZIP(), []int{83}
+}
+
+func (x *AgingBucket) GetKey() string {
+	if x != nil {
+		return x.Key
+	}
+	return ""
+}
+
+func (x *AgingBucket) GetFromDays() int32 {
+	if x != nil {
+		return x.FromDays
+	}
+	return 0
+}
+
+func (x *AgingBucket) GetToDays() int32 {
+	if x != nil {
+		return x.ToDays
+	}
+	return 0
+}
+
+func (x *AgingBucket) GetCount() uint32 {
+	if x != nil {
+		return x.Count
+	}
+	return 0
+}
+
+func (x *AgingBucket) GetTotal() string {
+	if x != nil {
+		return x.Total
+	}
+	return ""
+}
+
+func (x *AgingBucket) GetForeignCount() uint32 {
+	if x != nil {
+		return x.ForeignCount
+	}
+	return 0
+}
+
 var File_clients_v1_clients_proto protoreflect.FileDescriptor
 
 const file_clients_v1_clients_proto_rawDesc = "" +
@@ -7526,7 +8117,52 @@ const file_clients_v1_clients_proto_rawDesc = "" +
 	"\x05input\x18\x03 \x01(\v2!.clients.v1.AttachedDocumentInputR\x05input\"L\n" +
 	"\x1dDeleteAttachedDocumentRequest\x12\x1b\n" +
 	"\tclient_id\x18\x01 \x01(\rR\bclientId\x12\x0e\n" +
-	"\x02id\x18\x02 \x01(\rR\x02id2\xa2(\n" +
+	"\x02id\x18\x02 \x01(\rR\x02id\"9\n" +
+	"\x1aGetAccountStatementRequest\x12\x1b\n" +
+	"\tclient_id\x18\x01 \x01(\rR\bclientId\"\x8d\x06\n" +
+	"\x10AccountStatement\x12!\n" +
+	"\fcredit_limit\x18\x01 \x01(\x01R\vcreditLimit\x12'\n" +
+	"\x0fpending_balance\x18\x02 \x01(\tR\x0ependingBalance\x12)\n" +
+	"\x10available_credit\x18\x03 \x01(\x01R\x0favailableCredit\x120\n" +
+	"\x14open_documents_count\x18\x04 \x01(\rR\x12openDocumentsCount\x12+\n" +
+	"\x11billing_available\x18\x05 \x01(\bR\x10billingAvailable\x12=\n" +
+	"\tdocuments\x18\x06 \x03(\v2\x1f.clients.v1.OutstandingDocumentR\tdocuments\x12-\n" +
+	"\x05aging\x18\a \x03(\v2\x17.clients.v1.AgingBucketR\x05aging\x12\x1e\n" +
+	"\vaging_as_of\x18\b \x01(\tR\tagingAsOf\x12/\n" +
+	"\x13documents_available\x18\t \x01(\bR\x12documentsAvailable\x12)\n" +
+	"\x10cached_available\x18\n" +
+	" \x01(\bR\x0fcachedAvailable\x124\n" +
+	"\x16cached_pending_balance\x18\v \x01(\tR\x14cachedPendingBalance\x12'\n" +
+	"\x0fcached_currency\x18\f \x01(\tR\x0ecachedCurrency\x12 \n" +
+	"\fcached_as_of\x18\r \x01(\tR\n" +
+	"cachedAsOf\x12'\n" +
+	"\x0fcached_negative\x18\x0e \x01(\bR\x0ecachedNegative\x12%\n" +
+	"\x0ebilling_denied\x18\x0f \x01(\bR\rbillingDenied\x120\n" +
+	"\x14billing_not_deployed\x18\x10 \x01(\bR\x12billingNotDeployed\x126\n" +
+	"\x17documents_terms_unknown\x18\x11 \x01(\rR\x15documentsTermsUnknown\"\xcf\x03\n" +
+	"\x13OutstandingDocument\x12\x1f\n" +
+	"\vdocument_id\x18\x01 \x01(\tR\n" +
+	"documentId\x12\x19\n" +
+	"\bdoc_type\x18\x02 \x01(\tR\adocType\x12 \n" +
+	"\vconsecutivo\x18\x03 \x01(\tR\vconsecutivo\x12\x16\n" +
+	"\x06moneda\x18\x04 \x01(\tR\x06moneda\x12+\n" +
+	"\x11total_comprobante\x18\x05 \x01(\tR\x10totalComprobante\x12%\n" +
+	"\x0emonto_aplicado\x18\x06 \x01(\tR\rmontoAplicado\x12\x14\n" +
+	"\x05saldo\x18\a \x01(\tR\x05saldo\x12-\n" +
+	"\x12credito_disponible\x18\b \x01(\tR\x11creditoDisponible\x12#\n" +
+	"\rfecha_emision\x18\t \x01(\tR\ffechaEmision\x12\x19\n" +
+	"\bdue_date\x18\n" +
+	" \x01(\tR\adueDate\x12!\n" +
+	"\fdays_overdue\x18\v \x01(\x05R\vdaysOverdue\x12!\n" +
+	"\faging_bucket\x18\f \x01(\tR\vagingBucket\x12#\n" +
+	"\rterms_unknown\x18\r \x01(\bR\ftermsUnknown\"\xa6\x01\n" +
+	"\vAgingBucket\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x1b\n" +
+	"\tfrom_days\x18\x02 \x01(\x05R\bfromDays\x12\x17\n" +
+	"\ato_days\x18\x03 \x01(\x05R\x06toDays\x12\x14\n" +
+	"\x05count\x18\x04 \x01(\rR\x05count\x12\x14\n" +
+	"\x05total\x18\x05 \x01(\tR\x05total\x12#\n" +
+	"\rforeign_count\x18\x06 \x01(\rR\fforeignCount2\xb3)\n" +
 	"\x0eClientsService\x12[\n" +
 	"\fCreateClient\x12\x1f.clients.v1.CreateClientRequest\x1a\x12.clients.v1.Client\"\x16\x82\xd3\xe4\x93\x02\x10:\x01*\"\v/v1/clients\x12c\n" +
 	"\vListClients\x12\x1e.clients.v1.ListClientsRequest\x1a\x1f.clients.v1.ListClientsResponse\"\x13\x82\xd3\xe4\x93\x02\r\x12\v/v1/clients\x12W\n" +
@@ -7560,7 +8196,8 @@ const file_clients_v1_clients_proto_rawDesc = "" +
 	"\x0eUpdateDiscount\x12!.clients.v1.UpdateDiscountRequest\x1a\x14.clients.v1.Discount\"5\x82\xd3\xe4\x93\x02/:\x05input\x1a&/v1/clients/{client_id}/discounts/{id}\x12\x88\x01\n" +
 	"\x0eDeleteDiscount\x12!.clients.v1.DeleteDiscountRequest\x1a#.clients.v1.DeleteSubEntityResponse\".\x82\xd3\xe4\x93\x02(*&/v1/clients/{client_id}/discounts/{id}\x12z\n" +
 	"\x10GetCreditProfile\x12#.clients.v1.GetCreditProfileRequest\x1a\x19.clients.v1.CreditProfile\"&\x82\xd3\xe4\x93\x02 \x12\x1e/v1/clients/{client_id}/credit\x12\x87\x01\n" +
-	"\x13UpsertCreditProfile\x12&.clients.v1.UpsertCreditProfileRequest\x1a\x19.clients.v1.CreditProfile\"-\x82\xd3\xe4\x93\x02':\x05input\x1a\x1e/v1/clients/{client_id}/credit\x12\x8a\x01\n" +
+	"\x13UpsertCreditProfile\x12&.clients.v1.UpsertCreditProfileRequest\x1a\x19.clients.v1.CreditProfile\"-\x82\xd3\xe4\x93\x02':\x05input\x1a\x1e/v1/clients/{client_id}/credit\x12\x8e\x01\n" +
+	"\x13GetAccountStatement\x12&.clients.v1.GetAccountStatementRequest\x1a\x1c.clients.v1.AccountStatement\"1\x82\xd3\xe4\x93\x02+\x12)/v1/clients/{client_id}/account-statement\x12\x8a\x01\n" +
 	"\x12GetSupplierProfile\x12%.clients.v1.GetSupplierProfileRequest\x1a\x1b.clients.v1.SupplierProfile\"0\x82\xd3\xe4\x93\x02*\x12(/v1/clients/{client_id}/supplier-profile\x12\x97\x01\n" +
 	"\x15UpsertSupplierProfile\x12(.clients.v1.UpsertSupplierProfileRequest\x1a\x1b.clients.v1.SupplierProfile\"7\x82\xd3\xe4\x93\x021:\x05input\x1a(/v1/clients/{client_id}/supplier-profile\x12\x9e\x01\n" +
 	"\x15ListAttachedDocuments\x12(.clients.v1.ListAttachedDocumentsRequest\x1a).clients.v1.ListAttachedDocumentsResponse\"0\x82\xd3\xe4\x93\x02*\x12(/v1/clients/{client_id}/documents-attach\x12\x9a\x01\n" +
@@ -7580,7 +8217,7 @@ func file_clients_v1_clients_proto_rawDescGZIP() []byte {
 	return file_clients_v1_clients_proto_rawDescData
 }
 
-var file_clients_v1_clients_proto_msgTypes = make([]protoimpl.MessageInfo, 81)
+var file_clients_v1_clients_proto_msgTypes = make([]protoimpl.MessageInfo, 85)
 var file_clients_v1_clients_proto_goTypes = []any{
 	(*Client)(nil),                        // 0: clients.v1.Client
 	(*CreateClientRequest)(nil),           // 1: clients.v1.CreateClientRequest
@@ -7662,7 +8299,11 @@ var file_clients_v1_clients_proto_goTypes = []any{
 	(*CreateAttachedDocumentRequest)(nil), // 77: clients.v1.CreateAttachedDocumentRequest
 	(*UpdateAttachedDocumentRequest)(nil), // 78: clients.v1.UpdateAttachedDocumentRequest
 	(*DeleteAttachedDocumentRequest)(nil), // 79: clients.v1.DeleteAttachedDocumentRequest
-	nil,                                   // 80: clients.v1.ParsedRow.ErrorsEntry
+	(*GetAccountStatementRequest)(nil),    // 80: clients.v1.GetAccountStatementRequest
+	(*AccountStatement)(nil),              // 81: clients.v1.AccountStatement
+	(*OutstandingDocument)(nil),           // 82: clients.v1.OutstandingDocument
+	(*AgingBucket)(nil),                   // 83: clients.v1.AgingBucket
+	nil,                                   // 84: clients.v1.ParsedRow.ErrorsEntry
 }
 var file_clients_v1_clients_proto_depIdxs = []int32{
 	0,  // 0: clients.v1.ListClientsResponse.clients:type_name -> clients.v1.Client
@@ -7671,7 +8312,7 @@ var file_clients_v1_clients_proto_depIdxs = []int32{
 	15, // 3: clients.v1.GetClientTaxProfileResponse.custom_taxes:type_name -> clients.v1.CustomTaxInfo
 	16, // 4: clients.v1.GetClientTaxProfileResponse.exemption:type_name -> clients.v1.ExemptionInfo
 	21, // 5: clients.v1.ParsedRow.data:type_name -> clients.v1.ImportRow
-	80, // 6: clients.v1.ParsedRow.errors:type_name -> clients.v1.ParsedRow.ErrorsEntry
+	84, // 6: clients.v1.ParsedRow.errors:type_name -> clients.v1.ParsedRow.ErrorsEntry
 	22, // 7: clients.v1.ImportPreviewResponse.rows:type_name -> clients.v1.ParsedRow
 	23, // 8: clients.v1.ImportPreviewResponse.summary:type_name -> clients.v1.ImportSummary
 	24, // 9: clients.v1.ImportPreviewResponse.columns:type_name -> clients.v1.DetectedColumn
@@ -7697,89 +8338,93 @@ var file_clients_v1_clients_proto_depIdxs = []int32{
 	73, // 29: clients.v1.ListAttachedDocumentsResponse.documents:type_name -> clients.v1.AttachedDocument
 	74, // 30: clients.v1.CreateAttachedDocumentRequest.input:type_name -> clients.v1.AttachedDocumentInput
 	74, // 31: clients.v1.UpdateAttachedDocumentRequest.input:type_name -> clients.v1.AttachedDocumentInput
-	1,  // 32: clients.v1.ClientsService.CreateClient:input_type -> clients.v1.CreateClientRequest
-	6,  // 33: clients.v1.ClientsService.ListClients:input_type -> clients.v1.ListClientsRequest
-	3,  // 34: clients.v1.ClientsService.GetClient:input_type -> clients.v1.GetClientRequest
-	2,  // 35: clients.v1.ClientsService.UpdateClient:input_type -> clients.v1.UpdateClientRequest
-	4,  // 36: clients.v1.ClientsService.DeleteClient:input_type -> clients.v1.DeleteClientRequest
-	8,  // 37: clients.v1.ClientsService.LookupClients:input_type -> clients.v1.LookupClientsRequest
-	14, // 38: clients.v1.ClientsService.GetClientTaxProfile:input_type -> clients.v1.GetClientTaxProfileRequest
-	18, // 39: clients.v1.ClientsService.ValidateClientContact:input_type -> clients.v1.ValidateClientContactRequest
-	11, // 40: clients.v1.ClientsService.LookupSuppliers:input_type -> clients.v1.LookupSuppliersRequest
-	20, // 41: clients.v1.ClientsService.ImportPreview:input_type -> clients.v1.ImportPreviewRequest
-	26, // 42: clients.v1.ClientsService.ImportConfirm:input_type -> clients.v1.ImportConfirmRequest
-	32, // 43: clients.v1.ClientsService.ListContacts:input_type -> clients.v1.ListContactsRequest
-	34, // 44: clients.v1.ClientsService.CreateContact:input_type -> clients.v1.CreateContactRequest
-	35, // 45: clients.v1.ClientsService.UpdateContact:input_type -> clients.v1.UpdateContactRequest
-	36, // 46: clients.v1.ClientsService.DeleteContact:input_type -> clients.v1.DeleteContactRequest
-	39, // 47: clients.v1.ClientsService.ListActivities:input_type -> clients.v1.ListActivitiesRequest
-	41, // 48: clients.v1.ClientsService.CreateActivity:input_type -> clients.v1.CreateActivityRequest
-	42, // 49: clients.v1.ClientsService.UpdateActivity:input_type -> clients.v1.UpdateActivityRequest
-	43, // 50: clients.v1.ClientsService.DeleteActivity:input_type -> clients.v1.DeleteActivityRequest
-	46, // 51: clients.v1.ClientsService.ListExemptions:input_type -> clients.v1.ListExemptionsRequest
-	48, // 52: clients.v1.ClientsService.CreateExemption:input_type -> clients.v1.CreateExemptionRequest
-	49, // 53: clients.v1.ClientsService.UpdateExemption:input_type -> clients.v1.UpdateExemptionRequest
-	50, // 54: clients.v1.ClientsService.DeleteExemption:input_type -> clients.v1.DeleteExemptionRequest
-	53, // 55: clients.v1.ClientsService.ListCustomTaxes:input_type -> clients.v1.ListCustomTaxesRequest
-	55, // 56: clients.v1.ClientsService.CreateCustomTax:input_type -> clients.v1.CreateCustomTaxRequest
-	56, // 57: clients.v1.ClientsService.UpdateCustomTax:input_type -> clients.v1.UpdateCustomTaxRequest
-	57, // 58: clients.v1.ClientsService.DeleteCustomTax:input_type -> clients.v1.DeleteCustomTaxRequest
-	60, // 59: clients.v1.ClientsService.ListDiscounts:input_type -> clients.v1.ListDiscountsRequest
-	62, // 60: clients.v1.ClientsService.CreateDiscount:input_type -> clients.v1.CreateDiscountRequest
-	63, // 61: clients.v1.ClientsService.UpdateDiscount:input_type -> clients.v1.UpdateDiscountRequest
-	64, // 62: clients.v1.ClientsService.DeleteDiscount:input_type -> clients.v1.DeleteDiscountRequest
-	67, // 63: clients.v1.ClientsService.GetCreditProfile:input_type -> clients.v1.GetCreditProfileRequest
-	68, // 64: clients.v1.ClientsService.UpsertCreditProfile:input_type -> clients.v1.UpsertCreditProfileRequest
-	71, // 65: clients.v1.ClientsService.GetSupplierProfile:input_type -> clients.v1.GetSupplierProfileRequest
-	72, // 66: clients.v1.ClientsService.UpsertSupplierProfile:input_type -> clients.v1.UpsertSupplierProfileRequest
-	75, // 67: clients.v1.ClientsService.ListAttachedDocuments:input_type -> clients.v1.ListAttachedDocumentsRequest
-	77, // 68: clients.v1.ClientsService.CreateAttachedDocument:input_type -> clients.v1.CreateAttachedDocumentRequest
-	78, // 69: clients.v1.ClientsService.UpdateAttachedDocument:input_type -> clients.v1.UpdateAttachedDocumentRequest
-	79, // 70: clients.v1.ClientsService.DeleteAttachedDocument:input_type -> clients.v1.DeleteAttachedDocumentRequest
-	0,  // 71: clients.v1.ClientsService.CreateClient:output_type -> clients.v1.Client
-	7,  // 72: clients.v1.ClientsService.ListClients:output_type -> clients.v1.ListClientsResponse
-	0,  // 73: clients.v1.ClientsService.GetClient:output_type -> clients.v1.Client
-	0,  // 74: clients.v1.ClientsService.UpdateClient:output_type -> clients.v1.Client
-	5,  // 75: clients.v1.ClientsService.DeleteClient:output_type -> clients.v1.DeleteClientResponse
-	10, // 76: clients.v1.ClientsService.LookupClients:output_type -> clients.v1.LookupClientsResponse
-	17, // 77: clients.v1.ClientsService.GetClientTaxProfile:output_type -> clients.v1.GetClientTaxProfileResponse
-	19, // 78: clients.v1.ClientsService.ValidateClientContact:output_type -> clients.v1.ValidateClientContactResponse
-	13, // 79: clients.v1.ClientsService.LookupSuppliers:output_type -> clients.v1.LookupSuppliersResponse
-	25, // 80: clients.v1.ClientsService.ImportPreview:output_type -> clients.v1.ImportPreviewResponse
-	28, // 81: clients.v1.ClientsService.ImportConfirm:output_type -> clients.v1.ImportConfirmResponse
-	33, // 82: clients.v1.ClientsService.ListContacts:output_type -> clients.v1.ListContactsResponse
-	30, // 83: clients.v1.ClientsService.CreateContact:output_type -> clients.v1.Contact
-	30, // 84: clients.v1.ClientsService.UpdateContact:output_type -> clients.v1.Contact
-	29, // 85: clients.v1.ClientsService.DeleteContact:output_type -> clients.v1.DeleteSubEntityResponse
-	40, // 86: clients.v1.ClientsService.ListActivities:output_type -> clients.v1.ListActivitiesResponse
-	37, // 87: clients.v1.ClientsService.CreateActivity:output_type -> clients.v1.Activity
-	37, // 88: clients.v1.ClientsService.UpdateActivity:output_type -> clients.v1.Activity
-	29, // 89: clients.v1.ClientsService.DeleteActivity:output_type -> clients.v1.DeleteSubEntityResponse
-	47, // 90: clients.v1.ClientsService.ListExemptions:output_type -> clients.v1.ListExemptionsResponse
-	44, // 91: clients.v1.ClientsService.CreateExemption:output_type -> clients.v1.Exemption
-	44, // 92: clients.v1.ClientsService.UpdateExemption:output_type -> clients.v1.Exemption
-	29, // 93: clients.v1.ClientsService.DeleteExemption:output_type -> clients.v1.DeleteSubEntityResponse
-	54, // 94: clients.v1.ClientsService.ListCustomTaxes:output_type -> clients.v1.ListCustomTaxesResponse
-	51, // 95: clients.v1.ClientsService.CreateCustomTax:output_type -> clients.v1.CustomTax
-	51, // 96: clients.v1.ClientsService.UpdateCustomTax:output_type -> clients.v1.CustomTax
-	29, // 97: clients.v1.ClientsService.DeleteCustomTax:output_type -> clients.v1.DeleteSubEntityResponse
-	61, // 98: clients.v1.ClientsService.ListDiscounts:output_type -> clients.v1.ListDiscountsResponse
-	58, // 99: clients.v1.ClientsService.CreateDiscount:output_type -> clients.v1.Discount
-	58, // 100: clients.v1.ClientsService.UpdateDiscount:output_type -> clients.v1.Discount
-	29, // 101: clients.v1.ClientsService.DeleteDiscount:output_type -> clients.v1.DeleteSubEntityResponse
-	65, // 102: clients.v1.ClientsService.GetCreditProfile:output_type -> clients.v1.CreditProfile
-	65, // 103: clients.v1.ClientsService.UpsertCreditProfile:output_type -> clients.v1.CreditProfile
-	69, // 104: clients.v1.ClientsService.GetSupplierProfile:output_type -> clients.v1.SupplierProfile
-	69, // 105: clients.v1.ClientsService.UpsertSupplierProfile:output_type -> clients.v1.SupplierProfile
-	76, // 106: clients.v1.ClientsService.ListAttachedDocuments:output_type -> clients.v1.ListAttachedDocumentsResponse
-	73, // 107: clients.v1.ClientsService.CreateAttachedDocument:output_type -> clients.v1.AttachedDocument
-	73, // 108: clients.v1.ClientsService.UpdateAttachedDocument:output_type -> clients.v1.AttachedDocument
-	29, // 109: clients.v1.ClientsService.DeleteAttachedDocument:output_type -> clients.v1.DeleteSubEntityResponse
-	71, // [71:110] is the sub-list for method output_type
-	32, // [32:71] is the sub-list for method input_type
-	32, // [32:32] is the sub-list for extension type_name
-	32, // [32:32] is the sub-list for extension extendee
-	0,  // [0:32] is the sub-list for field type_name
+	82, // 32: clients.v1.AccountStatement.documents:type_name -> clients.v1.OutstandingDocument
+	83, // 33: clients.v1.AccountStatement.aging:type_name -> clients.v1.AgingBucket
+	1,  // 34: clients.v1.ClientsService.CreateClient:input_type -> clients.v1.CreateClientRequest
+	6,  // 35: clients.v1.ClientsService.ListClients:input_type -> clients.v1.ListClientsRequest
+	3,  // 36: clients.v1.ClientsService.GetClient:input_type -> clients.v1.GetClientRequest
+	2,  // 37: clients.v1.ClientsService.UpdateClient:input_type -> clients.v1.UpdateClientRequest
+	4,  // 38: clients.v1.ClientsService.DeleteClient:input_type -> clients.v1.DeleteClientRequest
+	8,  // 39: clients.v1.ClientsService.LookupClients:input_type -> clients.v1.LookupClientsRequest
+	14, // 40: clients.v1.ClientsService.GetClientTaxProfile:input_type -> clients.v1.GetClientTaxProfileRequest
+	18, // 41: clients.v1.ClientsService.ValidateClientContact:input_type -> clients.v1.ValidateClientContactRequest
+	11, // 42: clients.v1.ClientsService.LookupSuppliers:input_type -> clients.v1.LookupSuppliersRequest
+	20, // 43: clients.v1.ClientsService.ImportPreview:input_type -> clients.v1.ImportPreviewRequest
+	26, // 44: clients.v1.ClientsService.ImportConfirm:input_type -> clients.v1.ImportConfirmRequest
+	32, // 45: clients.v1.ClientsService.ListContacts:input_type -> clients.v1.ListContactsRequest
+	34, // 46: clients.v1.ClientsService.CreateContact:input_type -> clients.v1.CreateContactRequest
+	35, // 47: clients.v1.ClientsService.UpdateContact:input_type -> clients.v1.UpdateContactRequest
+	36, // 48: clients.v1.ClientsService.DeleteContact:input_type -> clients.v1.DeleteContactRequest
+	39, // 49: clients.v1.ClientsService.ListActivities:input_type -> clients.v1.ListActivitiesRequest
+	41, // 50: clients.v1.ClientsService.CreateActivity:input_type -> clients.v1.CreateActivityRequest
+	42, // 51: clients.v1.ClientsService.UpdateActivity:input_type -> clients.v1.UpdateActivityRequest
+	43, // 52: clients.v1.ClientsService.DeleteActivity:input_type -> clients.v1.DeleteActivityRequest
+	46, // 53: clients.v1.ClientsService.ListExemptions:input_type -> clients.v1.ListExemptionsRequest
+	48, // 54: clients.v1.ClientsService.CreateExemption:input_type -> clients.v1.CreateExemptionRequest
+	49, // 55: clients.v1.ClientsService.UpdateExemption:input_type -> clients.v1.UpdateExemptionRequest
+	50, // 56: clients.v1.ClientsService.DeleteExemption:input_type -> clients.v1.DeleteExemptionRequest
+	53, // 57: clients.v1.ClientsService.ListCustomTaxes:input_type -> clients.v1.ListCustomTaxesRequest
+	55, // 58: clients.v1.ClientsService.CreateCustomTax:input_type -> clients.v1.CreateCustomTaxRequest
+	56, // 59: clients.v1.ClientsService.UpdateCustomTax:input_type -> clients.v1.UpdateCustomTaxRequest
+	57, // 60: clients.v1.ClientsService.DeleteCustomTax:input_type -> clients.v1.DeleteCustomTaxRequest
+	60, // 61: clients.v1.ClientsService.ListDiscounts:input_type -> clients.v1.ListDiscountsRequest
+	62, // 62: clients.v1.ClientsService.CreateDiscount:input_type -> clients.v1.CreateDiscountRequest
+	63, // 63: clients.v1.ClientsService.UpdateDiscount:input_type -> clients.v1.UpdateDiscountRequest
+	64, // 64: clients.v1.ClientsService.DeleteDiscount:input_type -> clients.v1.DeleteDiscountRequest
+	67, // 65: clients.v1.ClientsService.GetCreditProfile:input_type -> clients.v1.GetCreditProfileRequest
+	68, // 66: clients.v1.ClientsService.UpsertCreditProfile:input_type -> clients.v1.UpsertCreditProfileRequest
+	80, // 67: clients.v1.ClientsService.GetAccountStatement:input_type -> clients.v1.GetAccountStatementRequest
+	71, // 68: clients.v1.ClientsService.GetSupplierProfile:input_type -> clients.v1.GetSupplierProfileRequest
+	72, // 69: clients.v1.ClientsService.UpsertSupplierProfile:input_type -> clients.v1.UpsertSupplierProfileRequest
+	75, // 70: clients.v1.ClientsService.ListAttachedDocuments:input_type -> clients.v1.ListAttachedDocumentsRequest
+	77, // 71: clients.v1.ClientsService.CreateAttachedDocument:input_type -> clients.v1.CreateAttachedDocumentRequest
+	78, // 72: clients.v1.ClientsService.UpdateAttachedDocument:input_type -> clients.v1.UpdateAttachedDocumentRequest
+	79, // 73: clients.v1.ClientsService.DeleteAttachedDocument:input_type -> clients.v1.DeleteAttachedDocumentRequest
+	0,  // 74: clients.v1.ClientsService.CreateClient:output_type -> clients.v1.Client
+	7,  // 75: clients.v1.ClientsService.ListClients:output_type -> clients.v1.ListClientsResponse
+	0,  // 76: clients.v1.ClientsService.GetClient:output_type -> clients.v1.Client
+	0,  // 77: clients.v1.ClientsService.UpdateClient:output_type -> clients.v1.Client
+	5,  // 78: clients.v1.ClientsService.DeleteClient:output_type -> clients.v1.DeleteClientResponse
+	10, // 79: clients.v1.ClientsService.LookupClients:output_type -> clients.v1.LookupClientsResponse
+	17, // 80: clients.v1.ClientsService.GetClientTaxProfile:output_type -> clients.v1.GetClientTaxProfileResponse
+	19, // 81: clients.v1.ClientsService.ValidateClientContact:output_type -> clients.v1.ValidateClientContactResponse
+	13, // 82: clients.v1.ClientsService.LookupSuppliers:output_type -> clients.v1.LookupSuppliersResponse
+	25, // 83: clients.v1.ClientsService.ImportPreview:output_type -> clients.v1.ImportPreviewResponse
+	28, // 84: clients.v1.ClientsService.ImportConfirm:output_type -> clients.v1.ImportConfirmResponse
+	33, // 85: clients.v1.ClientsService.ListContacts:output_type -> clients.v1.ListContactsResponse
+	30, // 86: clients.v1.ClientsService.CreateContact:output_type -> clients.v1.Contact
+	30, // 87: clients.v1.ClientsService.UpdateContact:output_type -> clients.v1.Contact
+	29, // 88: clients.v1.ClientsService.DeleteContact:output_type -> clients.v1.DeleteSubEntityResponse
+	40, // 89: clients.v1.ClientsService.ListActivities:output_type -> clients.v1.ListActivitiesResponse
+	37, // 90: clients.v1.ClientsService.CreateActivity:output_type -> clients.v1.Activity
+	37, // 91: clients.v1.ClientsService.UpdateActivity:output_type -> clients.v1.Activity
+	29, // 92: clients.v1.ClientsService.DeleteActivity:output_type -> clients.v1.DeleteSubEntityResponse
+	47, // 93: clients.v1.ClientsService.ListExemptions:output_type -> clients.v1.ListExemptionsResponse
+	44, // 94: clients.v1.ClientsService.CreateExemption:output_type -> clients.v1.Exemption
+	44, // 95: clients.v1.ClientsService.UpdateExemption:output_type -> clients.v1.Exemption
+	29, // 96: clients.v1.ClientsService.DeleteExemption:output_type -> clients.v1.DeleteSubEntityResponse
+	54, // 97: clients.v1.ClientsService.ListCustomTaxes:output_type -> clients.v1.ListCustomTaxesResponse
+	51, // 98: clients.v1.ClientsService.CreateCustomTax:output_type -> clients.v1.CustomTax
+	51, // 99: clients.v1.ClientsService.UpdateCustomTax:output_type -> clients.v1.CustomTax
+	29, // 100: clients.v1.ClientsService.DeleteCustomTax:output_type -> clients.v1.DeleteSubEntityResponse
+	61, // 101: clients.v1.ClientsService.ListDiscounts:output_type -> clients.v1.ListDiscountsResponse
+	58, // 102: clients.v1.ClientsService.CreateDiscount:output_type -> clients.v1.Discount
+	58, // 103: clients.v1.ClientsService.UpdateDiscount:output_type -> clients.v1.Discount
+	29, // 104: clients.v1.ClientsService.DeleteDiscount:output_type -> clients.v1.DeleteSubEntityResponse
+	65, // 105: clients.v1.ClientsService.GetCreditProfile:output_type -> clients.v1.CreditProfile
+	65, // 106: clients.v1.ClientsService.UpsertCreditProfile:output_type -> clients.v1.CreditProfile
+	81, // 107: clients.v1.ClientsService.GetAccountStatement:output_type -> clients.v1.AccountStatement
+	69, // 108: clients.v1.ClientsService.GetSupplierProfile:output_type -> clients.v1.SupplierProfile
+	69, // 109: clients.v1.ClientsService.UpsertSupplierProfile:output_type -> clients.v1.SupplierProfile
+	76, // 110: clients.v1.ClientsService.ListAttachedDocuments:output_type -> clients.v1.ListAttachedDocumentsResponse
+	73, // 111: clients.v1.ClientsService.CreateAttachedDocument:output_type -> clients.v1.AttachedDocument
+	73, // 112: clients.v1.ClientsService.UpdateAttachedDocument:output_type -> clients.v1.AttachedDocument
+	29, // 113: clients.v1.ClientsService.DeleteAttachedDocument:output_type -> clients.v1.DeleteSubEntityResponse
+	74, // [74:114] is the sub-list for method output_type
+	34, // [34:74] is the sub-list for method input_type
+	34, // [34:34] is the sub-list for extension type_name
+	34, // [34:34] is the sub-list for extension extendee
+	0,  // [0:34] is the sub-list for field type_name
 }
 
 func init() { file_clients_v1_clients_proto_init() }
@@ -7805,7 +8450,7 @@ func file_clients_v1_clients_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_clients_v1_clients_proto_rawDesc), len(file_clients_v1_clients_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   81,
+			NumMessages:   85,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
