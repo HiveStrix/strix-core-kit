@@ -2495,12 +2495,26 @@ type ExemptionInfo struct {
 	DocumentNumber  string                 `protobuf:"bytes,3,opt,name=document_number,json=documentNumber,proto3" json:"document_number,omitempty"`
 	InstitutionName string                 `protobuf:"bytes,4,opt,name=institution_name,json=institutionName,proto3" json:"institution_name,omitempty"`
 	ExemptionPct    float64                `protobuf:"fixed64,5,opt,name=exemption_pct,json=exemptionPct,proto3" json:"exemption_pct,omitempty"`
-	ValidFrom       string                 `protobuf:"bytes,6,opt,name=valid_from,json=validFrom,proto3" json:"valid_from,omitempty"`
-	ValidUntil      string                 `protobuf:"bytes,7,opt,name=valid_until,json=validUntil,proto3" json:"valid_until,omitempty"`
-	Article         string                 `protobuf:"bytes,8,opt,name=article,proto3" json:"article,omitempty"`
-	Subsection      string                 `protobuf:"bytes,9,opt,name=subsection,proto3" json:"subsection,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// valid_from es DESDE CUÁNDO RIGE la exoneración. No es la fecha en que se
+	// emitió el documento que la otorga: para eso está issued_on, y son dos
+	// hechos distintos (ver migración 00007).
+	ValidFrom  string `protobuf:"bytes,6,opt,name=valid_from,json=validFrom,proto3" json:"valid_from,omitempty"`
+	ValidUntil string `protobuf:"bytes,7,opt,name=valid_until,json=validUntil,proto3" json:"valid_until,omitempty"`
+	Article    string `protobuf:"bytes,8,opt,name=article,proto3" json:"article,omitempty"`
+	Subsection string `protobuf:"bytes,9,opt,name=subsection,proto3" json:"subsection,omitempty"`
+	// issued_on: la fecha en que la institución EXTENDIÓ el documento de
+	// exoneración. Es la que Hacienda pide como FechaEmisionEX en el
+	// comprobante electrónico, y el motivo por el que este campo existe:
+	// billing la necesita obligatoriamente para prellenar la exoneración de un
+	// borrador y no tenía de dónde sacarla.
+	//
+	// VACÍO SIGNIFICA "NO SE SABE", nunca "es igual a valid_from": la columna
+	// es nullable y no se rellenó retroactivamente a propósito. Un consumidor
+	// que la reciba vacía NO DEBE sustituirla por valid_from — debe decir que
+	// falta, que es lo que billing hace.
+	IssuedOn      string `protobuf:"bytes,10,opt,name=issued_on,json=issuedOn,proto3" json:"issued_on,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ExemptionInfo) Reset() {
@@ -2592,6 +2606,13 @@ func (x *ExemptionInfo) GetArticle() string {
 func (x *ExemptionInfo) GetSubsection() string {
 	if x != nil {
 		return x.Subsection
+	}
+	return ""
+}
+
+func (x *ExemptionInfo) GetIssuedOn() string {
+	if x != nil {
+		return x.IssuedOn
 	}
 	return ""
 }
@@ -4529,8 +4550,11 @@ type Exemption struct {
 	Notes           string                 `protobuf:"bytes,12,opt,name=notes,proto3" json:"notes,omitempty"`
 	CreatedAt       string                 `protobuf:"bytes,13,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	UpdatedAt       string                 `protobuf:"bytes,14,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// Fecha de emisión del documento de exoneración; distinta de valid_from
+	// (ver ExemptionInfo.issued_on y la migración 00007). Vacío = no se sabe.
+	IssuedOn      string `protobuf:"bytes,15,opt,name=issued_on,json=issuedOn,proto3" json:"issued_on,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Exemption) Reset() {
@@ -4661,6 +4685,13 @@ func (x *Exemption) GetUpdatedAt() string {
 	return ""
 }
 
+func (x *Exemption) GetIssuedOn() string {
+	if x != nil {
+		return x.IssuedOn
+	}
+	return ""
+}
+
 type ExemptionInput struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	ExemptionType   string                 `protobuf:"bytes,1,opt,name=exemption_type,json=exemptionType,proto3" json:"exemption_type,omitempty"`
@@ -4674,8 +4705,11 @@ type ExemptionInput struct {
 	Article         string                 `protobuf:"bytes,9,opt,name=article,proto3" json:"article,omitempty"`
 	Subsection      string                 `protobuf:"bytes,10,opt,name=subsection,proto3" json:"subsection,omitempty"`
 	Notes           string                 `protobuf:"bytes,11,opt,name=notes,proto3" json:"notes,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// Fecha de emisión del documento de exoneración (YYYY-MM-DD o RFC 3339).
+	// Vacío la deja sin registrar, que es lo que significa: no se sabe.
+	IssuedOn      string `protobuf:"bytes,12,opt,name=issued_on,json=issuedOn,proto3" json:"issued_on,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ExemptionInput) Reset() {
@@ -4781,6 +4815,13 @@ func (x *ExemptionInput) GetSubsection() string {
 func (x *ExemptionInput) GetNotes() string {
 	if x != nil {
 		return x.Notes
+	}
+	return ""
+}
+
+func (x *ExemptionInput) GetIssuedOn() string {
+	if x != nil {
+		return x.IssuedOn
 	}
 	return ""
 }
@@ -7906,7 +7947,7 @@ const file_clients_v1_clients_proto_rawDesc = "" +
 	"\x02id\x18\x01 \x01(\rR\x02id\x12\x19\n" +
 	"\btax_name\x18\x02 \x01(\tR\ataxName\x12\x19\n" +
 	"\btax_code\x18\x03 \x01(\tR\ataxCode\x12\x19\n" +
-	"\btax_rate\x18\x04 \x01(\x01R\ataxRate\"\xb9\x02\n" +
+	"\btax_rate\x18\x04 \x01(\x01R\ataxRate\"\xd6\x02\n" +
 	"\rExemptionInfo\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\rR\x02id\x12%\n" +
 	"\x0eexemption_type\x18\x02 \x01(\tR\rexemptionType\x12'\n" +
@@ -7920,7 +7961,9 @@ const file_clients_v1_clients_proto_rawDesc = "" +
 	"\aarticle\x18\b \x01(\tR\aarticle\x12\x1e\n" +
 	"\n" +
 	"subsection\x18\t \x01(\tR\n" +
-	"subsection\"\xa7\x01\n" +
+	"subsection\x12\x1b\n" +
+	"\tissued_on\x18\n" +
+	" \x01(\tR\bissuedOn\"\xa7\x01\n" +
 	"\x1bGetClientTaxProfileResponse\x12<\n" +
 	"\fcustom_taxes\x18\x01 \x03(\v2\x19.clients.v1.CustomTaxInfoR\vcustomTaxes\x12<\n" +
 	"\texemption\x18\x02 \x01(\v2\x19.clients.v1.ExemptionInfoH\x00R\texemption\x88\x01\x01B\f\n" +
@@ -8092,7 +8135,7 @@ const file_clients_v1_clients_proto_rawDesc = "" +
 	"\x05input\x18\x03 \x01(\v2\x19.clients.v1.ActivityInputR\x05input\"D\n" +
 	"\x15DeleteActivityRequest\x12\x1b\n" +
 	"\tclient_id\x18\x01 \x01(\rR\bclientId\x12\x0e\n" +
-	"\x02id\x18\x02 \x01(\rR\x02id\"\xd9\x03\n" +
+	"\x02id\x18\x02 \x01(\rR\x02id\"\xf6\x03\n" +
 	"\tExemption\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\rR\x02id\x12%\n" +
 	"\x0eexemption_type\x18\x02 \x01(\tR\rexemptionType\x12'\n" +
@@ -8115,8 +8158,9 @@ const file_clients_v1_clients_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\r \x01(\tR\tcreatedAt\x12\x1d\n" +
 	"\n" +
-	"updated_at\x18\x0e \x01(\tR\tupdatedAtB\r\n" +
-	"\v_project_id\"\xa3\x03\n" +
+	"updated_at\x18\x0e \x01(\tR\tupdatedAt\x12\x1b\n" +
+	"\tissued_on\x18\x0f \x01(\tR\bissuedOnB\r\n" +
+	"\v_project_id\"\xc0\x03\n" +
 	"\x0eExemptionInput\x12%\n" +
 	"\x0eexemption_type\x18\x01 \x01(\tR\rexemptionType\x12'\n" +
 	"\x0fdocument_number\x18\x02 \x01(\tR\x0edocumentNumber\x12)\n" +
@@ -8134,7 +8178,8 @@ const file_clients_v1_clients_proto_rawDesc = "" +
 	"subsection\x18\n" +
 	" \x01(\tR\n" +
 	"subsection\x12\x14\n" +
-	"\x05notes\x18\v \x01(\tR\x05notesB\f\n" +
+	"\x05notes\x18\v \x01(\tR\x05notes\x12\x1b\n" +
+	"\tissued_on\x18\f \x01(\tR\bissuedOnB\f\n" +
 	"\n" +
 	"_is_activeB\r\n" +
 	"\v_project_id\"4\n" +
