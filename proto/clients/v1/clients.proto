@@ -222,6 +222,14 @@ service ClientsService {
     };
   }
 
+  // ── Estado de cuenta: crédito disponible + documentos vivos ────
+  // Lectura compuesta: el LÍMITE es dato propio (client_credit_profiles); el
+  // SALDO y los documentos vienen de core-billing por su API. Es lectura
+  // fail-soft — si billing no responde, se muestra el límite y nada más.
+  rpc GetAccountStatement(GetAccountStatementRequest) returns (AccountStatement) {
+    option (google.api.http) = {get: "/v1/clients/{client_id}/account-statement"};
+  }
+
   // ── Sub-entidad: perfil de proveedor (1:1) ─────────────────────
   rpc GetSupplierProfile(GetSupplierProfileRequest) returns (SupplierProfile) {
     option (google.api.http) = {get: "/v1/clients/{client_id}/supplier-profile"};
@@ -1066,4 +1074,214 @@ message UpdateAttachedDocumentRequest {
 message DeleteAttachedDocumentRequest {
   uint32 client_id = 1;
   uint32 id = 2;
+}
+
+// ─── Estado de cuenta ───────────────────────────────────────────
+
+message GetAccountStatementRequest {
+  uint32 client_id = 1;
+}
+
+// AccountStatement compone el límite propio con el saldo y los documentos que
+// vienen de core-billing.
+//
+// billing_available separa "billing dijo que 0" de "billing no pudo
+// responder": cuando es false, pending_balance / available_credit /
+// open_documents_count / documents NO son de fiar y la UI muestra sólo el
+// límite. NUNCA se fabrica un saldo cero en ese caso — misma honestidad que
+// HasOpenObligationsResponse.pending_balance en billing.
+message AccountStatement {
+  double credit_limit = 1;
+  // Saldo pendiente confirmado (FE/TE/ND ACCEPTED, neto de aplicaciones), tal
+  // como lo calcula billing. Vacío si no se conoce.
+  string pending_balance = 2;
+  // available_credit = credit_limit - pending_balance, sólo cuando hay límite
+  // (> 0) y saldo conocido. La UI no muestra "disponible" sin límite fijado.
+  double available_credit = 3;
+  uint32 open_documents_count = 4;
+  bool billing_available = 5;
+  repeated OutstandingDocument documents = 6;
+
+  // Antigüedad de saldos (C3). SIEMPRE los seis tramos, en este orden fijo —
+  // al_dia, 1_30, 31_60, 61_90, mas_90, sin_vencimiento — aunque estén
+  // vacíos, para que la barra y su leyenda no reordenen entre respuestas.
+  // Lista vacía (0 elementos, no 6 en cero) cuando billing_available es
+  // false: sin documentos no hay qué agrupar.
+  repeated AgingBucket aging = 7;
+  // Fecha civil (YYYY-MM-DD) contra la que se calculó el aging.
+  string aging_as_of = 8;
+
+  // documents_available separa "este cliente no tiene comprobantes por cobrar"
+  // de "no se pudieron traer". Los documentos NO salen del mismo rpc que el
+  // saldo: el saldo y el conteo vienen de DocumentsService.HasOpenObligations
+  // (entitlement `invoices.read`) y la lista de
+  // PaymentsService.ListOutstandingDocuments (entitlement `receivables.read`),
+  // así que un rol con Facturación pero sin Cuentas por cobrar recibe el saldo
+  // y un PermissionDenied en la lista. Sin este campo, la UI pintaba «este
+  // cliente no tiene comprobantes por cobrar» junto a un saldo distinto de
+  // cero — una pantalla que se contradice a sí misma.
+  //
+  // Con billing_available en false esto también es false: no se llegó a pedir
+  // la lista. Sólo billing_available && !documents_available significa "el
+  // saldo de arriba es de Facturación, la lista no se pudo traer".
+  bool documents_available = 9;
+
+  // ── Respaldo cacheado (C6a/C6b, R-cache-no-manda) ──────────────────
+  //
+  // Sólo tiene sentido leerlo cuando billing_available es false: billing
+  // manda siempre que responde, y estos campos NUNCA reemplazan a
+  // pending_balance de arriba — son campos APARTE a propósito, para que
+  // ningún cliente de este contrato pueda confundir un número fresco con
+  // uno cacheado por leer el campo equivocado.
+  //
+  // Se sostiene en dos mecanismos (ver events/catalog.yaml, sección
+  // `consumes`, y internal/service/billing_events.go): SEMBRADO, cada
+  // lectura en vivo exitosa deja su cifra guardada acá; y AJUSTE por delta
+  // desde los eventos de cobro de billing (pago aplicado, nota de crédito
+  // aplicada suman/restan lo aplicado; el veredicto fiscal de un
+  // comprobante suma su total al ser ACEPTADO). El conjunto que cuenta es
+  // EXACTAMENTE el que usa la autoridad de billing para su propio número
+  // (doc_type FE/TE/ND, status ACCEPTED) — no una aproximación.
+  //
+  // cached_available en false es "billing no contestó Y tampoco hay ningún
+  // respaldo sembrado" (la ficha de este cliente nunca se abrió mientras
+  // billing SÍ contestaba) — la UI se queda mostrando solo el límite, como
+  // antes de C6a/C6b. Por eso SIEMPRE se muestra junto a cached_as_of, nunca
+  // como si fuera un saldo fresco.
+  bool cached_available = 10;
+  // El respaldo cacheado (decimal, nunca float): la última lectura en vivo
+  // sembrada, ajustada por delta por cada evento de cobro posterior. Vacío
+  // cuando cached_available es false, o cuando cached_negative es true (ver
+  // abajo) — un ajuste aplicado dos veces puede volver este número
+  // negativo, y ahí se vacía en vez de mostrarse o pisarse con cero.
+  //
+  // Viaja con CINCO decimales (numeric(18,5) del lado de este core, para no
+  // perder precisión frente a los montos NUMERIC(18,5) de billing): "12345.67"
+  // sembrado vuelve como "12345.67000". La ficha lo pasa por su formateador
+  // de dinero, que no le importan los ceros de más.
+  string cached_pending_balance = 11;
+  // SIEMPRE CRC, puesta por el sembrado -- billing tampoco distingue moneda
+  // en su propio saldo hoy, así que la etiqueta ya es tan precisa como la
+  // fuente. Un evento de cobro en otra moneda NUNCA la pisa (el número sí
+  // puede sumar montos de varias monedas, mismo costo ya aceptado para
+  // pending_balance de arriba, pero la etiqueta se queda fija).
+  string cached_currency = 12;
+  // Instante de corte del respaldo, RFC 3339. Es la fecha que la UI tiene
+  // que mostrar SIEMPRE junto al número de cached_pending_balance — nunca
+  // se presenta esa cifra sin ella.
+  string cached_as_of = 13;
+  // true cuando el respaldo cacheado resultó en un número NEGATIVO -- un
+  // estado que nunca puede ser verdad (nadie debe dinero negativo), señal
+  // de que un ajuste se aplicó dos veces. Con esto en true,
+  // cached_pending_balance viaja VACÍO a propósito: la UI tiene que decir
+  // que este respaldo no es confiable y hace falta una lectura fresca de
+  // Facturación, nunca mostrar el número dañado ni inventar un cero que
+  // parezca sano.
+  bool cached_negative = 14;
+
+  // billing_denied separa la NEGATIVA de Facturación de su CAÍDA. Sólo
+  // tiene sentido leerlo cuando billing_available es false.
+  //
+  // Facturación protege esta lectura POR CLIENTE (acción `invoices.read`
+  // sobre resource_type "customer", con el id del cliente como recurso) y
+  // también deniega cuando la empresa no tiene el módulo `invoices`
+  // contratado. Las dos cosas llegan acá como billing_denied.
+  //
+  // CON ESTO EN true, TODOS LOS CAMPOS cached_* VIAJAN VACÍOS a propósito:
+  // el respaldo cacheado lo siembran las lecturas de los usuarios que SÍ
+  // tienen permiso, así que servirlo a quien Facturación acaba de rechazar
+  // convertiría este core en la puerta de atrás del permiso que el otro
+  // acaba de cerrar. No hay cifra que mostrar, ni fresca ni vieja.
+  //
+  // La UI tiene que DECIR eso: «no disponible» es verdad de una caída —algo
+  // que se arregla reintentando— y engañoso de una negativa, donde no hay
+  // nada que reintentar y lo que falta es un permiso.
+  bool billing_denied = 15;
+
+  // billing_not_deployed es la TOPOLOGÍA, no una falla ni una negativa: este
+  // despliegue no tiene core-billing configurado. Sólo tiene sentido leerlo
+  // cuando billing_available es false.
+  //
+  // Existe porque sin él la ficha afirmaba dos cosas FALSAS sobre el cliente a
+  // partir de un hecho sobre la instalación. Con el guard vacío, el resumen
+  // volvía sin saldo y la lista volvía vacía SIN error, así que este core
+  // respondía billing_available=true, documents_available=true y cero
+  // documentos: la pantalla mostraba «Disponible = el límite entero» (no había
+  // saldo que restarle) y «Este cliente no tiene comprobantes por cobrar». Ni
+  // el disponible ni el vacío eran datos: eran la ausencia del módulo que los
+  // produce, contada como si fuera información del cliente.
+  //
+  // Con esto en true no viaja ninguna cifra de Facturación —tampoco la
+  // cacheada, que no tendría cómo actualizarse nunca— y la ficha dice lo único
+  // cierto: acá no hay Facturación, el límite de crédito es todo lo que esta
+  // pantalla sabe.
+  bool billing_not_deployed = 16;
+
+  // documents_terms_unknown cuenta los documentos de `documents` cuyas
+  // CONDICIONES DE PAGO no se pudieron traer -- el GetDocument por documento
+  // que hidrata fecha_emision/condicion_venta/plazo_credito falló o se quedó
+  // sin presupuesto (ver el enriquecimiento en internal/integration/billing.go).
+  //
+  // Son los mismos documentos que caen en el tramo `sin_vencimiento` del aging,
+  // y por eso hace falta este número aparte: sin él, la ficha decía «N
+  // documentos sin vencimiento declarado», que es una propiedad de ESOS
+  // documentos, cuando la verdad podía ser que sus condiciones existen y este
+  // core no las pudo leer. documents_available no cubre el caso: separa que
+  // falle LA LISTA, no que falle el enriquecimiento de una lista que sí llegó.
+  //
+  // count(sin_vencimiento) − documents_terms_unknown son los que de verdad no
+  // declaran vencimiento.
+  uint32 documents_terms_unknown = 17;
+}
+
+// OutstandingDocument es el saldo de UN comprobante, espejo de
+// billing.DocumentBalance. doc_type viaja como código corto (FE/TE/NC/ND/...)
+// para no arrastrar el enum de billing a la superficie REST de este core.
+message OutstandingDocument {
+  string document_id = 1;
+  string doc_type = 2;
+  string consecutivo = 3;
+  string moneda = 4;
+  string total_comprobante = 5;
+  string monto_aplicado = 6;
+  // saldo — sólo documentos deudores (FE/TE/ND); vacío en una NC.
+  string saldo = 7;
+  // credito_disponible — sólo una nota de crédito; vacío en el resto.
+  string credito_disponible = 8;
+
+  // Antigüedad (C3), calculada por el servicio — no viene de billing.
+  // fecha_emision es fecha CIVIL (YYYY-MM-DD), no el RFC3339 que devuelve
+  // billing.Document; vacía si no se pudo leer.
+  string fecha_emision = 9;
+  // due_date — "" cuando el vencimiento es desconocido (ver la regla de
+  // vencimiento en internal/clients/aging.go).
+  string due_date = 10;
+  // days_overdue — 0 cuando el vencimiento es desconocido. La UI lee
+  // aging_bucket para distinguir "al día" de "desconocido", no este 0.
+  int32 days_overdue = 11;
+  // aging_bucket — uno de los seis tramos fijos de AccountStatement.aging.
+  string aging_bucket = 12;
+
+  // terms_unknown: el GetDocument que hidrata fecha_emision, condicion_venta y
+  // plazo_credito falló para ESTE documento (fail-soft por documento). Con esto
+  // en true, fecha_emision y due_date vienen vacíos y aging_bucket es
+  // `sin_vencimiento` porque NO SE PUDO PREGUNTAR -- no porque el comprobante
+  // carezca de vencimiento. La ficha tiene que pintar esas dos celdas distinto:
+  // un guion dice "este documento no vence", y eso no se sabe.
+  bool terms_unknown = 13;
+}
+
+// AgingBucket es un tramo de antigüedad de saldos: cuántos documentos
+// pendientes caen en él y cuánto suman en CRC. to_days = -1 para "más de 90"
+// (mas_90, sin techo); from_days/to_days = 0/0 para al_dia y sin_vencimiento
+// porque no son un rango de días — son una condición. total es una cadena
+// decimal en CRC: los documentos de otra moneda se CUENTAN en foreign_count
+// y no se mezclan al total.
+message AgingBucket {
+  string key = 1;
+  int32 from_days = 2;
+  int32 to_days = 3;
+  uint32 count = 4;
+  string total = 5;
+  uint32 foreign_count = 6;
 }
