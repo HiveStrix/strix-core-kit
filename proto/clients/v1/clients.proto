@@ -668,10 +668,24 @@ message ExemptionInfo {
   string document_number = 3;
   string institution_name = 4;
   double exemption_pct = 5;
+  // valid_from es DESDE CUÁNDO RIGE la exoneración. No es la fecha en que se
+  // emitió el documento que la otorga: para eso está issued_on, y son dos
+  // hechos distintos (ver migración 00007).
   string valid_from = 6;
   string valid_until = 7;
   string article = 8;
   string subsection = 9;
+  // issued_on: la fecha en que la institución EXTENDIÓ el documento de
+  // exoneración. Es la que Hacienda pide como FechaEmisionEX en el
+  // comprobante electrónico, y el motivo por el que este campo existe:
+  // billing la necesita obligatoriamente para prellenar la exoneración de un
+  // borrador y no tenía de dónde sacarla.
+  //
+  // VACÍO SIGNIFICA "NO SE SABE", nunca "es igual a valid_from": la columna
+  // es nullable y no se rellenó retroactivamente a propósito. Un consumidor
+  // que la reciba vacía NO DEBE sustituirla por valid_from — debe decir que
+  // falta, que es lo que billing hace.
+  string issued_on = 10;
 }
 
 message GetClientTaxProfileResponse {
@@ -905,6 +919,9 @@ message Exemption {
   string notes = 12;
   string created_at = 13;
   string updated_at = 14;
+  // Fecha de emisión del documento de exoneración; distinta de valid_from
+  // (ver ExemptionInfo.issued_on y la migración 00007). Vacío = no se sabe.
+  string issued_on = 15;
 }
 
 message ExemptionInput {
@@ -919,6 +936,9 @@ message ExemptionInput {
   string article = 9;
   string subsection = 10;
   string notes = 11;
+  // Fecha de emisión del documento de exoneración (YYYY-MM-DD o RFC 3339).
+  // Vacío la deja sin registrar, que es lo que significa: no se sabe.
+  string issued_on = 12;
 }
 
 message ListExemptionsRequest {
