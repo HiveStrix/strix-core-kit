@@ -36,6 +36,7 @@ const (
 	ClientsService_GetClient_FullMethodName              = "/clients.v1.ClientsService/GetClient"
 	ClientsService_UpdateClient_FullMethodName           = "/clients.v1.ClientsService/UpdateClient"
 	ClientsService_DeleteClient_FullMethodName           = "/clients.v1.ClientsService/DeleteClient"
+	ClientsService_MergeClients_FullMethodName           = "/clients.v1.ClientsService/MergeClients"
 	ClientsService_LookupClients_FullMethodName          = "/clients.v1.ClientsService/LookupClients"
 	ClientsService_GetClientTaxProfile_FullMethodName    = "/clients.v1.ClientsService/GetClientTaxProfile"
 	ClientsService_ValidateClientContact_FullMethodName  = "/clients.v1.ClientsService/ValidateClientContact"
@@ -97,6 +98,27 @@ type ClientsServiceClient interface {
 	GetClient(ctx context.Context, in *GetClientRequest, opts ...grpc.CallOption) (*Client, error)
 	UpdateClient(ctx context.Context, in *UpdateClientRequest, opts ...grpc.CallOption) (*Client, error)
 	DeleteClient(ctx context.Context, in *DeleteClientRequest, opts ...grpc.CallOption) (*DeleteClientResponse, error)
+	// MergeClients fuses a duplicated client file into the one that survives:
+	// every row hanging off the LOSER is re-pointed at the SURVIVOR, the loser
+	// is retired with the same soft delete DeleteClient uses, and a ledger row
+	// records how many of each kind of thing moved.
+	//
+	// The caller picks the direction. This module never infers which file
+	// survives — not by age, not by row count. A merge is irreversible enough
+	// that guessing is not acceptable, so both ids are required and explicit.
+	//
+	// NOT idempotent, refused instead: the second call naming the same loser
+	// gets FAILED_PRECONDITION naming the merge that already happened and the
+	// file the data went to. See internal/service/merge.go for the argument.
+	//
+	// Gated on the `clients.delete` action, the same one DeleteClient uses.
+	// The platform's baseline policy derives the tier from the LAST segment of
+	// the action name, and the destructive verb family (delete/destroy/purge/
+	// remove/drop/truncate) is tenant-admin only in every module by a global
+	// floor no tenant layer can grant back. A verb of its own ("merge") would
+	// have landed in the write bucket, which ordinary members hold — strictly
+	// looser than the rpc it is destructive as.
+	MergeClients(ctx context.Context, in *MergeClientsRequest, opts ...grpc.CallOption) (*MergeClientsResponse, error)
 	// LookupClients resolves a batch of client IDs to their minimal projection
 	// {id, name, code, status}. Cross-module name resolution: this replaces the
 	// monolith's SQL JOINs against the clients table from billing listings
@@ -217,6 +239,16 @@ func (c *clientsServiceClient) DeleteClient(ctx context.Context, in *DeleteClien
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(DeleteClientResponse)
 	err := c.cc.Invoke(ctx, ClientsService_DeleteClient_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *clientsServiceClient) MergeClients(ctx context.Context, in *MergeClientsRequest, opts ...grpc.CallOption) (*MergeClientsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(MergeClientsResponse)
+	err := c.cc.Invoke(ctx, ClientsService_MergeClients_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -597,6 +629,27 @@ type ClientsServiceServer interface {
 	GetClient(context.Context, *GetClientRequest) (*Client, error)
 	UpdateClient(context.Context, *UpdateClientRequest) (*Client, error)
 	DeleteClient(context.Context, *DeleteClientRequest) (*DeleteClientResponse, error)
+	// MergeClients fuses a duplicated client file into the one that survives:
+	// every row hanging off the LOSER is re-pointed at the SURVIVOR, the loser
+	// is retired with the same soft delete DeleteClient uses, and a ledger row
+	// records how many of each kind of thing moved.
+	//
+	// The caller picks the direction. This module never infers which file
+	// survives — not by age, not by row count. A merge is irreversible enough
+	// that guessing is not acceptable, so both ids are required and explicit.
+	//
+	// NOT idempotent, refused instead: the second call naming the same loser
+	// gets FAILED_PRECONDITION naming the merge that already happened and the
+	// file the data went to. See internal/service/merge.go for the argument.
+	//
+	// Gated on the `clients.delete` action, the same one DeleteClient uses.
+	// The platform's baseline policy derives the tier from the LAST segment of
+	// the action name, and the destructive verb family (delete/destroy/purge/
+	// remove/drop/truncate) is tenant-admin only in every module by a global
+	// floor no tenant layer can grant back. A verb of its own ("merge") would
+	// have landed in the write bucket, which ordinary members hold — strictly
+	// looser than the rpc it is destructive as.
+	MergeClients(context.Context, *MergeClientsRequest) (*MergeClientsResponse, error)
 	// LookupClients resolves a batch of client IDs to their minimal projection
 	// {id, name, code, status}. Cross-module name resolution: this replaces the
 	// monolith's SQL JOINs against the clients table from billing listings
@@ -687,6 +740,9 @@ func (UnimplementedClientsServiceServer) UpdateClient(context.Context, *UpdateCl
 }
 func (UnimplementedClientsServiceServer) DeleteClient(context.Context, *DeleteClientRequest) (*DeleteClientResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method DeleteClient not implemented")
+}
+func (UnimplementedClientsServiceServer) MergeClients(context.Context, *MergeClientsRequest) (*MergeClientsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method MergeClients not implemented")
 }
 func (UnimplementedClientsServiceServer) LookupClients(context.Context, *LookupClientsRequest) (*LookupClientsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method LookupClients not implemented")
@@ -900,6 +956,24 @@ func _ClientsService_DeleteClient_Handler(srv interface{}, ctx context.Context, 
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(ClientsServiceServer).DeleteClient(ctx, req.(*DeleteClientRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ClientsService_MergeClients_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(MergeClientsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ClientsServiceServer).MergeClients(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ClientsService_MergeClients_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ClientsServiceServer).MergeClients(ctx, req.(*MergeClientsRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1560,6 +1634,10 @@ var ClientsService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DeleteClient",
 			Handler:    _ClientsService_DeleteClient_Handler,
+		},
+		{
+			MethodName: "MergeClients",
+			Handler:    _ClientsService_MergeClients_Handler,
 		},
 		{
 			MethodName: "LookupClients",
