@@ -102,6 +102,24 @@ service ClientsService {
     option (google.api.http) = {get: "/v1/clients/{client_id}/tax-profile"};
   }
 
+  // GetClientCreditLimit devuelve el tope de crédito declarado del cliente.
+  //
+  // POR QUÉ ES SU PROPIO RPC Y NO UN CAMPO DE GetClientTaxProfile: son dos
+  // hechos de naturaleza distinta y con vidas distintas. El perfil fiscal
+  // describe cómo se grava un documento; el límite describe cuánto se le fía a
+  // una persona. Meterlo en la misma respuesta obligaría a billing a pedir el
+  // uno para leer el otro, y ataría dos cachés que caducan a ritmos distintos.
+  //
+  // EXISTE PARA QUE EL LÍMITE AVISE. Este core guarda el tope y muestra el
+  // disponible en la ficha, pero nunca ve el momento «se está por facturar»:
+  // no crea documentos y nadie le avisa cuando se crea uno. Ese momento sólo
+  // existe en core-billing, así que lo único que este core puede hacer es
+  // EXPONER el dato — no decidir con él. La decisión, tomada: el límite AVISA,
+  // no bloquea (ver integrations.md).
+  rpc GetClientCreditLimit(GetClientCreditLimitRequest) returns (GetClientCreditLimitResponse) {
+    option (google.api.http) = {get: "/v1/clients/{client_id}/credit-limit"};
+  }
+
   // ValidateClientContact reports whether a contact belongs to the client
   // within the caller's tenant. Security-relevant FK guard for billing
   // (integration O — blocks cross-tenant contact injection).
@@ -692,6 +710,23 @@ message GetClientTaxProfileResponse {
   repeated CustomTaxInfo custom_taxes = 1;
   // exemption es la exoneración activa y vigente aplicable; ausente si no hay.
   optional ExemptionInfo exemption = 2;
+}
+
+message GetClientCreditLimitRequest {
+  uint32 client_id = 1;
+}
+
+message GetClientCreditLimitResponse {
+  // has_limit separa «no tiene tope» de «su tope es cero», que NO son lo mismo
+  // y que `credit_limit` solo no puede decir. Cero es un tope real —«a este
+  // cliente no se le fía nada»— y su ausencia es «nadie lo declaró todavía».
+  // Un consumidor que los confunda avisa de sobregiro sobre todo cliente sin
+  // perfil de crédito, que son casi todos al empezar.
+  bool has_limit = 1;
+  double credit_limit = 2;
+  // El nombre, para que quien avise pueda nombrar al cliente sin pedirlo
+  // aparte. Vacío si el expediente no existe.
+  string client_name = 3;
 }
 
 message ValidateClientContactRequest {
