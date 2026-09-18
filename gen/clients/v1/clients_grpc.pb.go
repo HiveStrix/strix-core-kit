@@ -39,6 +39,7 @@ const (
 	ClientsService_MergeClients_FullMethodName           = "/clients.v1.ClientsService/MergeClients"
 	ClientsService_LookupClients_FullMethodName          = "/clients.v1.ClientsService/LookupClients"
 	ClientsService_GetClientTaxProfile_FullMethodName    = "/clients.v1.ClientsService/GetClientTaxProfile"
+	ClientsService_GetClientCreditLimit_FullMethodName   = "/clients.v1.ClientsService/GetClientCreditLimit"
 	ClientsService_ValidateClientContact_FullMethodName  = "/clients.v1.ClientsService/ValidateClientContact"
 	ClientsService_LookupSuppliers_FullMethodName        = "/clients.v1.ClientsService/LookupSuppliers"
 	ClientsService_ImportPreview_FullMethodName          = "/clients.v1.ClientsService/ImportPreview"
@@ -129,6 +130,21 @@ type ClientsServiceClient interface {
 	// calls on every document total computation (integration G — sync gRPC with
 	// short-lived cache on the billing side).
 	GetClientTaxProfile(ctx context.Context, in *GetClientTaxProfileRequest, opts ...grpc.CallOption) (*GetClientTaxProfileResponse, error)
+	// GetClientCreditLimit devuelve el tope de crédito declarado del cliente.
+	//
+	// POR QUÉ ES SU PROPIO RPC Y NO UN CAMPO DE GetClientTaxProfile: son dos
+	// hechos de naturaleza distinta y con vidas distintas. El perfil fiscal
+	// describe cómo se grava un documento; el límite describe cuánto se le fía a
+	// una persona. Meterlo en la misma respuesta obligaría a billing a pedir el
+	// uno para leer el otro, y ataría dos cachés que caducan a ritmos distintos.
+	//
+	// EXISTE PARA QUE EL LÍMITE AVISE. Este core guarda el tope y muestra el
+	// disponible en la ficha, pero nunca ve el momento «se está por facturar»:
+	// no crea documentos y nadie le avisa cuando se crea uno. Ese momento sólo
+	// existe en core-billing, así que lo único que este core puede hacer es
+	// EXPONER el dato — no decidir con él. La decisión, tomada: el límite AVISA,
+	// no bloquea (ver integrations.md).
+	GetClientCreditLimit(ctx context.Context, in *GetClientCreditLimitRequest, opts ...grpc.CallOption) (*GetClientCreditLimitResponse, error)
 	// ValidateClientContact reports whether a contact belongs to the client
 	// within the caller's tenant. Security-relevant FK guard for billing
 	// (integration O — blocks cross-tenant contact injection).
@@ -269,6 +285,16 @@ func (c *clientsServiceClient) GetClientTaxProfile(ctx context.Context, in *GetC
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetClientTaxProfileResponse)
 	err := c.cc.Invoke(ctx, ClientsService_GetClientTaxProfile_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *clientsServiceClient) GetClientCreditLimit(ctx context.Context, in *GetClientCreditLimitRequest, opts ...grpc.CallOption) (*GetClientCreditLimitResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetClientCreditLimitResponse)
+	err := c.cc.Invoke(ctx, ClientsService_GetClientCreditLimit_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -660,6 +686,21 @@ type ClientsServiceServer interface {
 	// calls on every document total computation (integration G — sync gRPC with
 	// short-lived cache on the billing side).
 	GetClientTaxProfile(context.Context, *GetClientTaxProfileRequest) (*GetClientTaxProfileResponse, error)
+	// GetClientCreditLimit devuelve el tope de crédito declarado del cliente.
+	//
+	// POR QUÉ ES SU PROPIO RPC Y NO UN CAMPO DE GetClientTaxProfile: son dos
+	// hechos de naturaleza distinta y con vidas distintas. El perfil fiscal
+	// describe cómo se grava un documento; el límite describe cuánto se le fía a
+	// una persona. Meterlo en la misma respuesta obligaría a billing a pedir el
+	// uno para leer el otro, y ataría dos cachés que caducan a ritmos distintos.
+	//
+	// EXISTE PARA QUE EL LÍMITE AVISE. Este core guarda el tope y muestra el
+	// disponible en la ficha, pero nunca ve el momento «se está por facturar»:
+	// no crea documentos y nadie le avisa cuando se crea uno. Ese momento sólo
+	// existe en core-billing, así que lo único que este core puede hacer es
+	// EXPONER el dato — no decidir con él. La decisión, tomada: el límite AVISA,
+	// no bloquea (ver integrations.md).
+	GetClientCreditLimit(context.Context, *GetClientCreditLimitRequest) (*GetClientCreditLimitResponse, error)
 	// ValidateClientContact reports whether a contact belongs to the client
 	// within the caller's tenant. Security-relevant FK guard for billing
 	// (integration O — blocks cross-tenant contact injection).
@@ -749,6 +790,9 @@ func (UnimplementedClientsServiceServer) LookupClients(context.Context, *LookupC
 }
 func (UnimplementedClientsServiceServer) GetClientTaxProfile(context.Context, *GetClientTaxProfileRequest) (*GetClientTaxProfileResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetClientTaxProfile not implemented")
+}
+func (UnimplementedClientsServiceServer) GetClientCreditLimit(context.Context, *GetClientCreditLimitRequest) (*GetClientCreditLimitResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetClientCreditLimit not implemented")
 }
 func (UnimplementedClientsServiceServer) ValidateClientContact(context.Context, *ValidateClientContactRequest) (*ValidateClientContactResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ValidateClientContact not implemented")
@@ -1010,6 +1054,24 @@ func _ClientsService_GetClientTaxProfile_Handler(srv interface{}, ctx context.Co
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(ClientsServiceServer).GetClientTaxProfile(ctx, req.(*GetClientTaxProfileRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ClientsService_GetClientCreditLimit_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetClientCreditLimitRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ClientsServiceServer).GetClientCreditLimit(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ClientsService_GetClientCreditLimit_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ClientsServiceServer).GetClientCreditLimit(ctx, req.(*GetClientCreditLimitRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1646,6 +1708,10 @@ var ClientsService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetClientTaxProfile",
 			Handler:    _ClientsService_GetClientTaxProfile_Handler,
+		},
+		{
+			MethodName: "GetClientCreditLimit",
+			Handler:    _ClientsService_GetClientCreditLimit_Handler,
 		},
 		{
 			MethodName: "ValidateClientContact",
