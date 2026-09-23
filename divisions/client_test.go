@@ -131,6 +131,29 @@ func TestPathJoinsCodesFromRoot(t *testing.T) {
 	}
 }
 
+func TestAncestorsFromRootToSelf(t *testing.T) {
+	_, c := serveFake(t)
+	got, err := c.Ancestors(ctxFor("t1"), 6)
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	want := []int64{1, 2, 5, 6}
+	if len(got) != len(want) {
+		t.Fatalf("ancestors(6) = %v", got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("ancestors(6) = %v, esperaba %v", got, want)
+		}
+	}
+	if root, err := c.Ancestors(ctxFor("t1"), 1); err != nil || len(root) != 1 || root[0] != 1 {
+		t.Fatalf("ancestors(1) = %v, %v", root, err)
+	}
+	if _, err := c.Ancestors(ctxFor("t1"), 99); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("err = %v, esperaba ErrNotFound", err)
+	}
+}
+
 // La unidad de caché es el árbol POR TENANT: dos operaciones del mismo tenant
 // dentro del TTL comparten una sola GetTree; otro tenant trae la suya, porque
 // el token del caller viaja y la foto no puede cruzarse entre tenants.
@@ -204,5 +227,8 @@ func TestStubFailsClosedOnEveryMethod(t *testing.T) {
 	}
 	if _, err := s.Path(context.Background(), 1); !errors.Is(err, ErrNotConfigured) {
 		t.Fatalf("Path: %v", err)
+	}
+	if _, err := s.Ancestors(context.Background(), 1); !errors.Is(err, ErrNotConfigured) {
+		t.Fatalf("Ancestors: %v", err)
 	}
 }
