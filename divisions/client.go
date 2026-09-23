@@ -63,7 +63,7 @@ type RefStatus struct {
 	Reason string
 }
 
-// Client son las tres operaciones que un core consumidor necesita. La
+// Client son las operaciones que un core consumidor necesita. La
 // interfaz es deliberadamente estrecha: cuanto más ancha, más difícil
 // mantener los módulos separables.
 type Client interface {
@@ -78,6 +78,10 @@ type Client interface {
 	// Path devuelve los codes desde la raíz hasta id unidos por "/" — lo que
 	// un hecho transaccional guarda como snapshot.
 	Path(ctx context.Context, id int64) (string, error)
+	// Ancestors devuelve los ids desde la raíz hasta id, él incluido — lo que
+	// un consumidor recorre para heredar algo "subiendo por el árbol" (p. ej.
+	// la jefatura de la división más cercana que la tenga).
+	Ancestors(ctx context.Context, id int64) ([]int64, error)
 }
 
 // Stub es el cliente sin backend: TODO falla con ErrNotConfigured. Existe
@@ -90,6 +94,9 @@ func (Stub) ValidateRefs(context.Context, []int64) (map[int64]RefStatus, error) 
 }
 func (Stub) Subtree(context.Context, int64) ([]int64, error) { return nil, ErrNotConfigured }
 func (Stub) Path(context.Context, int64) (string, error)     { return "", ErrNotConfigured }
+func (Stub) Ancestors(context.Context, int64) ([]int64, error) {
+	return nil, ErrNotConfigured
+}
 
 // DefaultTTL es la vida de la foto del árbol en caché.
 const DefaultTTL = time.Minute
@@ -222,6 +229,31 @@ func (c *GRPCClient) Path(ctx context.Context, id int64) (string, error) {
 		}
 	}
 	return "", fmt.Errorf("divisions: cadena de ancestros rota para %d", id)
+}
+
+func (c *GRPCClient) Ancestors(ctx context.Context, id int64) ([]int64, error) {
+	t, err := c.treeFor(ctx)
+	if err != nil {
+		return nil, err
+	}
+	n, ok := t.nodes[id]
+	if !ok {
+		return nil, fmt.Errorf("%w (id %d)", ErrNotFound, id)
+	}
+	out := []int64{id}
+	for steps := 0; steps <= len(t.nodes); steps++ {
+		if n.parent == 0 {
+			for i, j := 0, len(out)-1; i < j; i, j = i+1, j-1 {
+				out[i], out[j] = out[j], out[i]
+			}
+			return out, nil
+		}
+		out = append(out, n.parent)
+		if n, ok = t.nodes[n.parent]; !ok {
+			break
+		}
+	}
+	return nil, fmt.Errorf("divisions: cadena de ancestros rota para %d", id)
 }
 
 // treeFor devuelve la foto del árbol del tenant del contexto, de caché si

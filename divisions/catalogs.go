@@ -28,13 +28,18 @@ type Catalogs interface {
 	AssetTypes() AssetTypesClient
 }
 
-// CostCentersClient son las tres operaciones sobre centros de costo, con la
+// CostCentersClient son las operaciones sobre centros de costo, con la
 // misma semántica que las del árbol. Válido = existe, activo, cadena de
 // ancestros activa y ninguna ventana temporal de la cadena cerrada HOY.
 type CostCentersClient interface {
 	ValidateRefs(ctx context.Context, ids []int64) (map[int64]RefStatus, error)
 	Subtree(ctx context.Context, rootID int64) ([]int64, error)
 	Path(ctx context.Context, id int64) (string, error)
+	// Anchor devuelve el division_id del centro de costo — el nodo del árbol
+	// organizacional contra el que se ancla — ErrNotFound si el id no existe.
+	// Es la primitiva que CheckCoherence compone con Subtree del árbol para
+	// decidir si una referencia (división, centro de costo) es coherente.
+	Anchor(ctx context.Context, id int64) (int64, error)
 }
 
 // AssetType es la proyección del catálogo que un consumidor necesita para
@@ -82,6 +87,7 @@ func (stubCostCenters) ValidateRefs(context.Context, []int64) (map[int64]RefStat
 }
 func (stubCostCenters) Subtree(context.Context, int64) ([]int64, error) { return nil, ErrNotConfigured }
 func (stubCostCenters) Path(context.Context, int64) (string, error)     { return "", ErrNotConfigured }
+func (stubCostCenters) Anchor(context.Context, int64) (int64, error)    { return 0, ErrNotConfigured }
 
 type stubAssetTypes struct{}
 
@@ -156,6 +162,46 @@ func (cc *costCentersClient) Path(ctx context.Context, id int64) (string, error)
 		}
 	}
 	return "", fmt.Errorf("divisions: cadena de ancestros rota para el centro de costo %d", id)
+}
+
+func (cc *costCentersClient) Anchor(ctx context.Context, id int64) (int64, error) {
+	t, err := cc.c.costCentersFor(ctx)
+	if err != nil {
+		return 0, err
+	}
+	n, ok := t.nodes[id]
+	if !ok {
+		return 0, fmt.Errorf("%w (centro de costo %d)", ErrNotFound, id)
+	}
+	return n.anchor, nil
+}
+
+// CheckCoherence responde si la referencia (divisionID, costCenterID) es
+// coherente: el ancla de costCenterID (su division_id en core-divisions) es
+// divisionID o un ancestro de divisionID — equivalentemente, divisionID
+// pertenece al Subtree(ancla). Es una FUNCIÓN LIBRE sobre Catalogs y no un
+// método de la interfaz a propósito: solo compone dos primitivas YA
+// PÚBLICAS (Anchor y el Subtree del árbol organizacional), ambas resueltas
+// contra las cachés existentes sin ninguna llamada extra, y así la interfaz
+// se mantiene tan angosta como el resto del paquete pide ("cuanto más
+// ancha, más difícil mantener los módulos separables" — doc de Client).
+// Cualquier implementación futura de Catalogs la hereda gratis, sin tener
+// que reimplementarla.
+func CheckCoherence(ctx context.Context, cats Catalogs, divisionID, costCenterID int64) (bool, error) {
+	anchor, err := cats.CostCenters().Anchor(ctx, costCenterID)
+	if err != nil {
+		return false, err
+	}
+	ids, err := cats.Subtree(ctx, anchor)
+	if err != nil {
+		return false, err
+	}
+	for _, id := range ids {
+		if id == divisionID {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 type assetTypesClient struct{ c *GRPCClient }
@@ -278,6 +324,7 @@ func (c *GRPCClient) assetTypesFor(ctx context.Context) (*atCatalog, error) {
 
 type ccNode struct {
 	parent int64
+	anchor int64 // division_id: el nodo del árbol organizacional contra el que ancla
 	code   string
 	active bool
 	starts time.Time // cero = sin límite
@@ -297,6 +344,7 @@ func buildCostCenters(resp *divisionsv1.CostCenterTree) *ccTree {
 	for _, cc := range resp.GetCostCenters() {
 		t.nodes[cc.GetId()] = &ccNode{
 			parent: cc.GetParentId(),
+			anchor: cc.GetDivisionId(),
 			code:   cc.GetCode(),
 			active: cc.GetActive(),
 			starts: parseDate(cc.GetStartsOn()),

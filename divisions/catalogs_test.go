@@ -206,6 +206,87 @@ func TestCatalogCachesArePerTenantAndForwardTheToken(t *testing.T) {
 	}
 }
 
+// Anchor devuelve el division_id de cada centro de costo tal como lo sirve
+// el fake: empresa/cerrado/bajo-cerrado anclan en general(1), y
+// operacion/cocina/obra anclan en centroamerica(2) — ver fakeDivisions en
+// client_test.go, cuyo árbol es el que sirve serveCatalogs.
+func TestCostCentersAnchor(t *testing.T) {
+	_, c := serveCatalogs(t)
+	ctx := tenantctx.WithTenant(context.Background(), "prueba")
+
+	cases := map[int64]int64{1: 1, 2: 2, 3: 2, 4: 2, 5: 1, 6: 1}
+	for cc, want := range cases {
+		got, err := c.CostCenters().Anchor(ctx, cc)
+		if err != nil {
+			t.Fatalf("anchor(%d): err = %v", cc, err)
+		}
+		if got != want {
+			t.Fatalf("anchor(%d) = %d, esperaba %d", cc, got, want)
+		}
+	}
+	if _, err := c.CostCenters().Anchor(ctx, 99); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("err = %v, esperaba ErrNotFound", err)
+	}
+}
+
+// CheckCoherence: (D, C) es coherente sii el ancla de C es D o un ancestro
+// de D — equivalentemente D pertenece al Subtree del ancla. El árbol de
+// divisiones es el de fakeDivisions (client_test.go):
+//
+//	general(1)
+//	├── centroamerica(2)
+//	│   ├── cr(4)
+//	│   └── gt(5, inactiva) └── suc-gt(6)
+//	└── europa(3)
+//
+// y los centros de costo (fakeCatalogs, arriba) anclan: empresa/cerrado/
+// bajo-cerrado en general(1); operacion/cocina/obra en centroamerica(2).
+func TestCheckCoherence(t *testing.T) {
+	_, c := serveCatalogs(t)
+	ctx := tenantctx.WithTenant(context.Background(), "prueba")
+
+	cases := []struct {
+		name       string
+		divisionID int64
+		ccID       int64
+		want       bool
+	}{
+		// mismo nodo: D es exactamente el ancla de C.
+		{"mismo nodo", 2, 2, true},
+		// ancestro: el ancla de C es un ancestro de D (D desciende del ancla).
+		{"D desciende del ancla", 4, 2, true},
+		// rama hermana: el ancla de C no es D ni su ancestro.
+		{"rama hermana", 3, 2, false},
+		// el ancla de C es DESCENDIENTE de D (al revés de lo que pide la regla).
+		{"ancla desciende de D", 1, 2, false},
+		// raíz/raíz.
+		{"raiz con raiz", 1, 1, true},
+		// D inexistente: no puede pertenecer a ningún subárbol real.
+		{"division inexistente", 99, 1, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := CheckCoherence(ctx, c, tc.divisionID, tc.ccID)
+			if err != nil {
+				t.Fatalf("err = %v", err)
+			}
+			if got != tc.want {
+				t.Fatalf("CheckCoherence(%d, %d) = %v, esperaba %v", tc.divisionID, tc.ccID, got, tc.want)
+			}
+		})
+	}
+
+	// centro de costo inexistente: Anchor falla con ErrNotFound y se propaga.
+	if _, err := CheckCoherence(ctx, c, 1, 99); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("err = %v, esperaba ErrNotFound", err)
+	}
+
+	// Stub: fail-closed, como el resto del paquete.
+	if _, err := CheckCoherence(ctx, Stub{}, 1, 1); !errors.Is(err, ErrNotConfigured) {
+		t.Fatalf("err = %v, esperaba ErrNotConfigured", err)
+	}
+}
+
 func TestCatalogsFailClosedWithoutTenantAndOnTheStub(t *testing.T) {
 	_, c := serveCatalogs(t)
 	if _, err := c.CostCenters().ValidateRefs(context.Background(), []int64{1}); !errors.Is(err, ErrNoTenant) {
