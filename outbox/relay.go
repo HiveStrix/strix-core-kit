@@ -54,13 +54,29 @@ type Relay struct {
 	nc    *nats.Conn
 	js    jetstream.JetStream
 	cfg   Config
+
+	// streamReady and warned are touched by Connect and then only by the Run
+	// goroutine, never concurrently.
+	streamReady bool
+	warned      bool
 }
+
+// streamAttemptTimeout bounds one attempt at creating the stream, so a broker
+// that accepts the TCP connection but does not answer cannot stall a sweep.
+const streamAttemptTimeout = 5 * time.Second
 
 // Connect dials NATS and ensures the stream exists.
 //
 // A nil Relay with a nil error is returned when natsURL is empty: events simply
 // accumulate in the outbox and drain once a broker is configured. Nothing is
 // lost, and nothing blocks.
+//
+// A broker that is not reachable YET is not an error either. The first dial
+// retries in the background (RetryOnFailedConnect) and the stream is created
+// by Run as soon as the broker answers. Without this, a DNS or NATS hiccup in
+// the seconds a pod takes to start left that pod without a relay until its
+// next restart, with every event parked in the outbox. The error return is
+// kept for what retrying cannot fix: a malformed URL or invalid options.
 func Connect(ctx context.Context, natsURL string, store *Store, cfg Config) (*Relay, error) {
 	if natsURL == "" {
 		return nil, nil
@@ -72,6 +88,9 @@ func Connect(ctx context.Context, natsURL string, store *Store, cfg Config) (*Re
 		cfg.Batch = 100
 	}
 	nc, err := nats.Connect(natsURL,
+		// MaxReconnects only governs reconnecting AFTER a first successful
+		// connection; RetryOnFailedConnect is what makes the first one retry.
+		nats.RetryOnFailedConnect(true),
 		nats.MaxReconnects(-1),
 		nats.ReconnectWait(2*time.Second),
 		nats.ReconnectJitter(500*time.Millisecond, time.Second),
@@ -84,15 +103,49 @@ func Connect(ctx context.Context, natsURL string, store *Store, cfg Config) (*Re
 		nc.Close()
 		return nil, err
 	}
-	if _, err := js.CreateOrUpdateStream(ctx, jetstream.StreamConfig{
-		Name:      cfg.StreamName,
-		Subjects:  []string{cfg.SubjectPrefix},
+	r := &Relay{store: store, nc: nc, js: js, cfg: cfg}
+	// Best effort now, so a healthy broker is ready from the first sweep.
+	r.ensureStream(ctx)
+	return r, nil
+}
+
+// ensureStream creates the Core's stream once the broker is reachable and
+// reports whether it exists. Until it does, sweeps publish nothing: the events
+// stay in the outbox, which is exactly where they are safe.
+func (r *Relay) ensureStream(ctx context.Context) bool {
+	if r.streamReady {
+		return true
+	}
+	if !r.nc.IsConnected() {
+		r.warnOnce(ctx, "broker not reachable yet")
+		return false
+	}
+	attempt, cancel := context.WithTimeout(ctx, streamAttemptTimeout)
+	defer cancel()
+	if _, err := r.js.CreateOrUpdateStream(attempt, jetstream.StreamConfig{
+		Name:      r.cfg.StreamName,
+		Subjects:  []string{r.cfg.SubjectPrefix},
 		Retention: jetstream.LimitsPolicy,
 	}); err != nil {
-		nc.Close()
-		return nil, err
+		r.warnOnce(ctx, err.Error())
+		return false
 	}
-	return &Relay{store: store, nc: nc, js: js, cfg: cfg}, nil
+	if r.warned {
+		slog.InfoContext(ctx, "relay: broker reachable, stream ready", "stream", r.cfg.StreamName)
+	}
+	r.streamReady = true
+	return true
+}
+
+// warnOnce logs the first failure only: a broker that is down for an hour
+// would otherwise write a line every sweep.
+func (r *Relay) warnOnce(ctx context.Context, reason string) {
+	if r.warned {
+		return
+	}
+	r.warned = true
+	slog.WarnContext(ctx, "relay: stream not ready, events stay in the outbox and are published once the broker answers",
+		"stream", r.cfg.StreamName, "reason", reason)
 }
 
 // Run polls until ctx is cancelled.
@@ -104,6 +157,9 @@ func (r *Relay) Run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+			if !r.ensureStream(ctx) {
+				continue
+			}
 			for _, tenantID := range r.tenants() {
 				r.drain(ctx, tenantID)
 			}
