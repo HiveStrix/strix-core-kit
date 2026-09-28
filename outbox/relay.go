@@ -87,20 +87,8 @@ func Connect(ctx context.Context, natsURL string, store *Store, cfg Config) (*Re
 	if cfg.Batch == 0 {
 		cfg.Batch = 100
 	}
-	nc, err := nats.Connect(natsURL,
-		// MaxReconnects only governs reconnecting AFTER a first successful
-		// connection; RetryOnFailedConnect is what makes the first one retry.
-		nats.RetryOnFailedConnect(true),
-		nats.MaxReconnects(-1),
-		nats.ReconnectWait(2*time.Second),
-		nats.ReconnectJitter(500*time.Millisecond, time.Second),
-	)
+	nc, js, err := Dial(natsURL)
 	if err != nil {
-		return nil, err
-	}
-	js, err := jetstream.New(nc)
-	if err != nil {
-		nc.Close()
 		return nil, err
 	}
 	r := &Relay{store: store, nc: nc, js: js, cfg: cfg}
