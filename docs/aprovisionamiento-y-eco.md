@@ -112,5 +112,12 @@ Tres mensajes, los tres por el outbox transaccional (nunca *publish-and-pray*):
 | Solicitante | Dueño | Solicitud | Eco | id compartido |
 |---|---|---|---|---|
 | core-expenses (`items`) | core-inventory (`items`) | `expenses.item.created.v1` | `inventory.item.linked.v1` | `expenses.items.inventory_item_id` |
+| core-maintenance (`assets`) | core-inventory (`items` + `units`) | `maintenance.asset.created.v1` (con `source_ref` y `provision` cuando se pide) | `inventory.item.linked.v1` (+ `inventory_unit_id`) | `maintenance.assets.inventory_item_id` / `inventory_unit_id` |
 
 Detalle de cada payload en el `events/catalog.yaml` de cada repo.
+
+### Notas de la segunda instancia (2026-09-27)
+
+- **Un eco, dos solicitantes.** `inventory.item.linked.v1` lo consumen expenses y maintenance; cada uno se queda sólo con los `source_ref` de su prefijo (`expenses:item:`, `maintenance:asset:`). Un campo nuevo en el eco (`inventory_unit_id`) es opcional y los consumidores viejos lo ignoran.
+- **La solicitud puede pedir menos que una entidad entera.** Si el activo ya eligió un artículo existente (el modelo), `provision` trae sólo `unit` y el dueño crea el ejemplar de ese artículo.
+- **Backfill de la carrera.** Expenses cierra la ventana del punto «La ventana de carrera»: al guardar el id re-publica los hechos que se omitieron (`reconciliation: true`). Es el camino a copiar por el próximo par.
