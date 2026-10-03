@@ -13,7 +13,10 @@ var formulaRegistry = map[string]func(coefficients, inputs map[string]decimal.De
 	"aguinaldo_cr":            evalAguinaldoCR,
 	"thirteenth_br":           evalThirteenthBR,
 	"cesantia_cr":             evalCesantiaCR,
+	"cesantia_cr_art29":       evalCesantiaCRArt29,
 	"preaviso_cr":             evalPreavisoCR,
+	"fixed_term_indemnity_cr": evalFixedTermIndemnityCR,
+	"absence_employer_share":  evalAbsenceEmployerShare,
 	"aviso_previo_br":         evalAvisoPrevioBR,
 	"fgts_br":                 evalFGTSBR,
 	"overtime":                evalOvertime,
@@ -39,12 +42,13 @@ func EvalFormula(kind string, coefficients, inputs map[string]decimal.Decimal) (
 	return fn(coefficients, inputs)
 }
 
-// evalAguinaldoCR is Costa Rica's aguinaldo (Código de Trabajo Art. 196):
-// one-twelfth of the salaries ACTUALLY PAID over the accrual period. The
-// summation itself happens upstream (payroll already knows every salary it
-// paid); this formula only receives the already-summed total.
+// evalAguinaldoCR is Costa Rica's aguinaldo (Ley 2412 arts. 1-3, art. 2 as
+// amended by Ley 3929 — not the Código de Trabajo): one-twelfth of the
+// salaries EARNED (devengados) over the accrual period. The summation itself
+// happens upstream (payroll already knows every salary it accrued); this
+// formula only receives the already-summed total.
 //
-//	inputs:       total_annual_salary — Σ of gross salaries paid Dec–Nov
+//	inputs:       total_annual_salary — Σ of gross salaries earned Dec–Nov
 //	coefficients: divisor             — months in the accrual period (12)
 func evalAguinaldoCR(coefficients, inputs map[string]decimal.Decimal) (decimal.Decimal, error) {
 	total, err := requireValue(inputs, "total_annual_salary", "aguinaldo_cr")
@@ -97,6 +101,11 @@ func evalThirteenthBR(coefficients, inputs map[string]decimal.Decimal) (decimal.
 //	              equal cap_years by convention)
 //
 // Fractional years are prorated linearly within the band they fall in.
+//
+// That cumulative shape is NOT what art. 29 says (the rate of the row of the
+// completed years times the years, fixed days below one year): use
+// cesantia_cr_art29. This kind stays registered so rows seeded under it keep
+// evaluating until they are closed.
 func evalCesantiaCR(coefficients, inputs map[string]decimal.Decimal) (decimal.Decimal, error) {
 	years, err := requireValue(inputs, "years_of_service", "cesantia_cr")
 	if err != nil {
@@ -148,25 +157,33 @@ func evalCesantiaCR(coefficients, inputs map[string]decimal.Decimal) (decimal.De
 // lookup by tenure, not a cumulative sum — the employee owes the notice of
 // the single band their tenure has reached, not the sum of every band passed
 // through. Below the first band's threshold nothing is owed. Bands may be
-// given in any order; the one with the highest min_years that years_of_service
-// still meets wins.
+// given in any order; the one with the highest threshold that
+// years_of_service still meets wins.
+//
+// Art. 28 draws its lines with "que exceda de seis meses y no sea mayor de un
+// año" and "después de un año": at exactly 6 months the worker is still in
+// the first band. A band marked band<i>_exclusive = 1 is met only ABOVE its
+// min_years; absent or 0 keeps the original ">=" so rows seeded before the
+// flag existed evaluate as they did.
+//
+// band_count goes through requireCount since v0.18.0: a negative or
+// fractional count, which used to evaluate as no band at all, is now an
+// error. The seeded rows carry whole, small counts and are not affected.
 //
 //	inputs:       years_of_service
-//	coefficients: band_count, band<i>_min_years, band<i>_notice_days
+//	coefficients: band_count, band<i>_min_years, band<i>_notice_days,
+//	              band<i>_exclusive (optional, 0/1)
 func evalPreavisoCR(coefficients, inputs map[string]decimal.Decimal) (decimal.Decimal, error) {
 	years, err := requireValue(inputs, "years_of_service", "preaviso_cr")
 	if err != nil {
 		return decimal.Decimal{}, err
 	}
-	bandCountValue, err := requireValue(coefficients, "band_count", "preaviso_cr")
+	bandCount, err := requireCount(coefficients, "band_count", "preaviso_cr", 0)
 	if err != nil {
 		return decimal.Decimal{}, err
 	}
-	bandCount := int(bandCountValue.IntPart())
 
-	noticeDays := decimal.Zero
-	haveMatch := false
-	bestMinYears := decimal.Zero
+	bands := make([]stepBand, 0, bandCount)
 	for i := 1; i <= bandCount; i++ {
 		minYears, err := requireValue(coefficients, fmt.Sprintf("band%d_min_years", i), "preaviso_cr")
 		if err != nil {
@@ -176,13 +193,290 @@ func evalPreavisoCR(coefficients, inputs map[string]decimal.Decimal) (decimal.De
 		if err != nil {
 			return decimal.Decimal{}, err
 		}
-		if years.GreaterThanOrEqual(minYears) && (!haveMatch || minYears.GreaterThan(bestMinYears)) {
-			bestMinYears = minYears
-			noticeDays = days
-			haveMatch = true
+		exclusive, err := optionalFlag(coefficients, fmt.Sprintf("band%d_exclusive", i), "preaviso_cr")
+		if err != nil {
+			return decimal.Decimal{}, err
+		}
+		bands = append(bands, stepBand{min: minYears, exclusive: exclusive, value: days})
+	}
+	if days, ok := highestMet(bands, years); ok {
+		return days, nil
+	}
+	return decimal.Zero, nil
+}
+
+// evalCesantiaCRArt29 is Costa Rica's cesantía as Código de Trabajo art. 29
+// reads it and the MTSS applies it (Directriz MTSS 1-2003; DAJ-AE-083-09,
+// DAJ-AE-142-11, DAJ-AE-765-06):
+//
+//   - Under one completed year, a fixed number of days by the highest
+//     sub-year band reached (art. 29 inc. 1-2: 7 days from 3 months, 14 days
+//     past 6 months); nothing below the first band.
+//   - From one completed year on, the days-per-year of the row of the
+//     COMPLETED years (row i = i years; the last row covers every tenure at
+//     or above it) times the years counted, capped: min(completed years +
+//     (fraction counts ? 1 : 0), cap_years). The fraction adds a year to the
+//     multiplier but never moves the worker to the next row (Directriz
+//     1-2003, considerando III): 1 year 8 months = 19.5 × 2 = 39 days.
+//
+// Tenure arrives already split, so the boundaries are the caller's facts and
+// not this function's guess: exactly 12 months is completed_years 1 and
+// remainder_months 0, which is row 1. Whether a fraction of exactly
+// fraction_min_months counts, and whether a sub-year band is met at its
+// exact threshold, are coefficients (the law says "superior", the MTSS
+// Directriz "igual o superior"), not code.
+//
+//	inputs:       completed_years  — whole years of service (integer >= 0)
+//	              remainder_months — months beyond them, in [0, 12); with 0
+//	                                 completed years, the total months
+//	coefficients: sub_year_band_count,
+//	              sub_year_band<i>_min_months, sub_year_band<i>_inclusive (0/1),
+//	              sub_year_band<i>_days for i in 1..sub_year_band_count;
+//	              row_count, row<i>_days_per_year for i in 1..row_count;
+//	              cap_years; fraction_min_months; fraction_inclusive (0/1)
+func evalCesantiaCRArt29(coefficients, inputs map[string]decimal.Decimal) (decimal.Decimal, error) {
+	const kind = "cesantia_cr_art29"
+	years, err := requireValue(inputs, "completed_years", kind)
+	if err != nil {
+		return decimal.Decimal{}, err
+	}
+	if !years.IsInteger() || years.IsNegative() {
+		return decimal.Decimal{}, fmt.Errorf("hcmrules: %s: completed_years %s must be a whole number >= 0", kind, years)
+	}
+	months, err := requireValue(inputs, "remainder_months", kind)
+	if err != nil {
+		return decimal.Decimal{}, err
+	}
+	if months.IsNegative() || months.GreaterThanOrEqual(decimal.NewFromInt(12)) {
+		return decimal.Decimal{}, fmt.Errorf("hcmrules: %s: remainder_months %s must be in [0, 12); twelve months are a completed year", kind, months)
+	}
+
+	// Every coefficient is read before branching, so a broken row fails for
+	// every employee and not only for the ones whose tenure happens to reach
+	// the broken part.
+	subYearCount, err := requireCount(coefficients, "sub_year_band_count", kind, 0)
+	if err != nil {
+		return decimal.Decimal{}, err
+	}
+	subYear := make([]stepBand, 0, subYearCount)
+	for i := 1; i <= subYearCount; i++ {
+		minMonths, err := requireValue(coefficients, fmt.Sprintf("sub_year_band%d_min_months", i), kind)
+		if err != nil {
+			return decimal.Decimal{}, err
+		}
+		inclusive, err := requireFlag(coefficients, fmt.Sprintf("sub_year_band%d_inclusive", i), kind)
+		if err != nil {
+			return decimal.Decimal{}, err
+		}
+		days, err := requireValue(coefficients, fmt.Sprintf("sub_year_band%d_days", i), kind)
+		if err != nil {
+			return decimal.Decimal{}, err
+		}
+		subYear = append(subYear, stepBand{min: minMonths, exclusive: !inclusive, value: days})
+	}
+	rowCount, err := requireCount(coefficients, "row_count", kind, 1)
+	if err != nil {
+		return decimal.Decimal{}, err
+	}
+	rows := make([]decimal.Decimal, rowCount)
+	for i := 1; i <= rowCount; i++ {
+		if rows[i-1], err = requireValue(coefficients, fmt.Sprintf("row%d_days_per_year", i), kind); err != nil {
+			return decimal.Decimal{}, err
 		}
 	}
-	return noticeDays, nil
+	capYears, err := requireValue(coefficients, "cap_years", kind)
+	if err != nil {
+		return decimal.Decimal{}, err
+	}
+	if !capYears.IsPositive() {
+		return decimal.Decimal{}, fmt.Errorf("hcmrules: %s: cap_years must be positive", kind)
+	}
+	fractionMin, err := requireValue(coefficients, "fraction_min_months", kind)
+	if err != nil {
+		return decimal.Decimal{}, err
+	}
+	fractionInclusive, err := requireFlag(coefficients, "fraction_inclusive", kind)
+	if err != nil {
+		return decimal.Decimal{}, err
+	}
+
+	if years.IsZero() {
+		if days, ok := highestMet(subYear, months); ok {
+			return days, nil
+		}
+		return decimal.Zero, nil
+	}
+
+	row := rowCount
+	if years.LessThan(decimal.NewFromInt(int64(rowCount))) {
+		row = int(years.IntPart())
+	}
+	counted := years
+	if (stepBand{min: fractionMin, exclusive: !fractionInclusive}).metBy(months) {
+		counted = counted.Add(decimal.NewFromInt(1))
+	}
+	if counted.GreaterThan(capYears) {
+		counted = capYears
+	}
+	return rows[row-1].Mul(counted), nil
+}
+
+// evalFixedTermIndemnityCR is the minimum an employer owes for ending a
+// fixed-term or project contract early without just cause (Código de Trabajo
+// art. 31): one day of salary per block of days worked or fraction of one,
+// never less than a floor that is higher for contracts of six months or more.
+// The concrete damages a court may award on top are not payroll's.
+//
+//	inputs:       days_worked, contract_months — the agreed term
+//	coefficients: block_days (7), days_per_block (1), min_days (3),
+//	              min_days_long (22), long_contract_months (6)
+//
+// Result = max(ceil(days_worked / block_days) × days_per_block,
+// contract_months >= long_contract_months ? min_days_long : min_days), in
+// days.
+func evalFixedTermIndemnityCR(coefficients, inputs map[string]decimal.Decimal) (decimal.Decimal, error) {
+	const kind = "fixed_term_indemnity_cr"
+	daysWorked, err := requireValue(inputs, "days_worked", kind)
+	if err != nil {
+		return decimal.Decimal{}, err
+	}
+	contractMonths, err := requireValue(inputs, "contract_months", kind)
+	if err != nil {
+		return decimal.Decimal{}, err
+	}
+	if daysWorked.IsNegative() || contractMonths.IsNegative() {
+		return decimal.Decimal{}, fmt.Errorf("hcmrules: %s: days_worked and contract_months must not be negative", kind)
+	}
+	blockDays, err := requireValue(coefficients, "block_days", kind)
+	if err != nil {
+		return decimal.Decimal{}, err
+	}
+	if !blockDays.IsPositive() {
+		return decimal.Decimal{}, fmt.Errorf("hcmrules: %s: block_days must be positive", kind)
+	}
+	daysPerBlock, err := requireValue(coefficients, "days_per_block", kind)
+	if err != nil {
+		return decimal.Decimal{}, err
+	}
+	minDays, err := requireValue(coefficients, "min_days", kind)
+	if err != nil {
+		return decimal.Decimal{}, err
+	}
+	minDaysLong, err := requireValue(coefficients, "min_days_long", kind)
+	if err != nil {
+		return decimal.Decimal{}, err
+	}
+	longContractMonths, err := requireValue(coefficients, "long_contract_months", kind)
+	if err != nil {
+		return decimal.Decimal{}, err
+	}
+
+	// Quotient and remainder instead of a division, so a block count is never
+	// at the mercy of a rounded quotient.
+	blocks, rest := daysWorked.QuoRem(blockDays, 0)
+	if rest.IsPositive() {
+		blocks = blocks.Add(decimal.NewFromInt(1))
+	}
+	owed := blocks.Mul(daysPerBlock)
+	floor := minDays
+	if contractMonths.GreaterThanOrEqual(longContractMonths) {
+		floor = minDaysLong
+	}
+	if owed.LessThan(floor) {
+		return floor, nil
+	}
+	return owed, nil
+}
+
+// evalAbsenceEmployerShare is the share of the daily salary the EMPLOYER
+// pays for one day of a subsidised absence, by the day's position in that
+// absence: Costa Rica's CCSS sick leave is 50 % for days 1-3 and nothing from
+// day 4 (MTSS DAJ-AE-829-06, DAJ-AE-201-12 — a criterion, not statute),
+// maternity a flat 50 % (art. 95). The institution's part is not payroll's,
+// and neither is deciding which day of the absence this is.
+//
+//	inputs:       absence_day_index — 1 for the first day of the absence
+//	coefficients: band_count, band<i>_from_day, band<i>_rate
+//
+// The band with the highest from_day at or below the index wins. An index
+// below every band is a data error, not a zero share: it means the table
+// does not say what this day is worth.
+func evalAbsenceEmployerShare(coefficients, inputs map[string]decimal.Decimal) (decimal.Decimal, error) {
+	const kind = "absence_employer_share"
+	index, err := requireValue(inputs, "absence_day_index", kind)
+	if err != nil {
+		return decimal.Decimal{}, err
+	}
+	if !index.IsInteger() || index.LessThan(decimal.NewFromInt(1)) {
+		return decimal.Decimal{}, fmt.Errorf("hcmrules: %s: absence_day_index %s must be a whole number >= 1", kind, index)
+	}
+	bandCount, err := requireCount(coefficients, "band_count", kind, 1)
+	if err != nil {
+		return decimal.Decimal{}, err
+	}
+	bands := make([]stepBand, 0, bandCount)
+	seen := map[string]bool{}
+	for i := 1; i <= bandCount; i++ {
+		fromDay, err := requireValue(coefficients, fmt.Sprintf("band%d_from_day", i), kind)
+		if err != nil {
+			return decimal.Decimal{}, err
+		}
+		if !fromDay.IsInteger() || fromDay.LessThan(decimal.NewFromInt(1)) {
+			return decimal.Decimal{}, fmt.Errorf("hcmrules: %s: band%d_from_day %s must be a whole number >= 1", kind, i, fromDay)
+		}
+		if seen[fromDay.String()] {
+			return decimal.Decimal{}, fmt.Errorf("hcmrules: %s: two bands start on day %s", kind, fromDay)
+		}
+		seen[fromDay.String()] = true
+		rate, err := requireValue(coefficients, fmt.Sprintf("band%d_rate", i), kind)
+		if err != nil {
+			return decimal.Decimal{}, err
+		}
+		bands = append(bands, stepBand{min: fromDay, value: rate})
+	}
+	rate, ok := highestMet(bands, index)
+	if !ok {
+		return decimal.Decimal{}, fmt.Errorf("hcmrules: %s: no band covers absence day %s", kind, index)
+	}
+	return rate, nil
+}
+
+// stepBand is one threshold of a step lookup — the worker is owed the value
+// of the single highest band reached, not a sum. It is met at min, or only
+// above it when exclusive.
+type stepBand struct {
+	min       decimal.Decimal
+	exclusive bool
+	value     decimal.Decimal
+}
+
+func (b stepBand) metBy(x decimal.Decimal) bool {
+	if b.exclusive {
+		return x.GreaterThan(b.min)
+	}
+	return x.GreaterThanOrEqual(b.min)
+}
+
+// outranks reports whether b is a higher threshold than o: a larger min, or
+// the same min crossed strictly.
+func (b stepBand) outranks(o stepBand) bool {
+	if c := b.min.Cmp(o.min); c != 0 {
+		return c > 0
+	}
+	return b.exclusive && !o.exclusive
+}
+
+// highestMet returns the value of the highest band x meets, in whatever
+// order the bands come; on an exact tie the first one given wins. ok is
+// false when x meets none.
+func highestMet(bands []stepBand, x decimal.Decimal) (value decimal.Decimal, ok bool) {
+	var best stepBand
+	for _, b := range bands {
+		if b.metBy(x) && (!ok || b.outranks(best)) {
+			best, ok = b, true
+		}
+	}
+	return best.value, ok
 }
 
 // evalAvisoPrevioBR is Brazil's aviso prévio (Lei 12.506/2011): a base notice

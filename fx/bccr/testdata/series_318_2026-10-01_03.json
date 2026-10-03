@@ -1,0 +1,24 @@
+{
+   "estado": true,
+   "mensaje": "Consulta exitosa",
+   "datos": [
+      {
+         "codigoIndicador": "318",
+         "nombreIndicador": "Tipo cambio venta",
+         "series": [
+            {
+               "fecha": "2026-10-01",
+               "valorDatoPorPeriodo": 461.93
+            },
+            {
+               "fecha": "2026-10-02",
+               "valorDatoPorPeriodo": 462.15
+            },
+            {
+               "fecha": "2026-10-03",
+               "valorDatoPorPeriodo": 462.08
+            }
+         ]
+      }
+   ]
+}
