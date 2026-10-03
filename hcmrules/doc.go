@@ -9,6 +9,7 @@
 // locally instead of calling the service per formula.
 //
 //	EvalBracket(tiers, base) -> amount
+//	EvalBracketIncremental(tiers, before, after) -> amount
 //	EvalFormula(kind, coefficients, inputs) -> amount   // registry of pure funcs
 //	CheckEligibility(kind, params, facts) -> bool
 //	ResolveCalendar(entries, from, to) -> []Day

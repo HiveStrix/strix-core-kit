@@ -54,6 +54,33 @@ func EvalBracket(tiers []Tier, base decimal.Decimal) (decimal.Decimal, error) {
 	return evalBracketMarginal(sortedByLowerBound(tiers), base), nil
 }
 
+// EvalBracketIncremental is what the slice of base between before and after
+// adds to a progressive table: EvalBracket(after) − EvalBracket(before).
+//
+// It is how a monthly tax is withheld when the month has several payments.
+// Costa Rica's ISR is levied on the income of the whole month (Ley 7092 arts.
+// 32-33), so on each payment before is the month's taxable base already paid
+// and after the base including this payment; the increments of every payment
+// of the month add up to the tax of the month's total. Credits and what was
+// already withheld are the caller's, not the table's.
+//
+// after below before is an error: a reversal is a decision about what to give
+// back, not a negative slice of a table.
+func EvalBracketIncremental(tiers []Tier, before, after decimal.Decimal) (decimal.Decimal, error) {
+	if after.LessThan(before) {
+		return decimal.Decimal{}, fmt.Errorf("hcmrules: incremental bracket: after %s is below before %s", after, before)
+	}
+	hi, err := EvalBracket(tiers, after)
+	if err != nil {
+		return decimal.Decimal{}, err
+	}
+	lo, err := EvalBracket(tiers, before)
+	if err != nil {
+		return decimal.Decimal{}, err
+	}
+	return hi.Sub(lo), nil
+}
+
 // evalBracketMarginal sums, tier by tier, the portion of base that falls
 // inside that tier's own range times that tier's Rate. tiers must already be
 // sorted ascending by LowerBound.

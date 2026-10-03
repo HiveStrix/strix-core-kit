@@ -217,6 +217,104 @@ func TestEvalBracket_CappedTable_MarginalVsQuickDeductionDivergence(t *testing.T
 	})
 }
 
+// isrCR2026Tiers is the REAL 2026 Costa Rica salary ISR table (Decreto
+// 45333-H, La Gaceta 229, 05/12/2025, art. 1 a-e): 0 / 10 / 15 / 20 / 25 %
+// over 918,000 / 1,347,000 / 2,364,000 / 4,727,000. quick_deduction is
+// derived by hand so the published shortcut can be cross-checked.
+func isrCR2026Tiers() []Tier {
+	return []Tier{
+		{Seq: 1, LowerBound: d("0"), UpperBound: dptr("918000"), Rate: d("0"), QuickDeduction: d("0")},
+		{Seq: 2, LowerBound: d("918000"), UpperBound: dptr("1347000"), Rate: d("0.10"), QuickDeduction: d("91800")},
+		{Seq: 3, LowerBound: d("1347000"), UpperBound: dptr("2364000"), Rate: d("0.15"), QuickDeduction: d("159150")},
+		{Seq: 4, LowerBound: d("2364000"), UpperBound: dptr("4727000"), Rate: d("0.20"), QuickDeduction: d("277350")},
+		{Seq: 5, LowerBound: d("4727000"), UpperBound: nil, Rate: d("0.25"), QuickDeduction: d("513700")},
+	}
+}
+
+func TestEvalBracket_ISR_CR2026(t *testing.T) {
+	tiers := isrCR2026Tiers()
+	for base, want := range map[string]string{
+		"918000":  "0",
+		"1000000": "8200",
+		"1347000": "42900",
+		"1500000": "65850",
+		"2364000": "195450",
+		"4727000": "668050",
+		"5000000": "736300",
+	} {
+		got, err := EvalBracket(tiers, d(base))
+		if err != nil {
+			t.Fatalf("EvalBracket(%s): %v", base, err)
+		}
+		if !got.Equal(d(want)) {
+			t.Errorf("EvalBracket(%s) = %s, want %s", base, got, want)
+		}
+		qd, err := evalBracketQuickDeduction(sortedByLowerBound(tiers), d(base))
+		if err != nil || !qd.Equal(d(want)) {
+			t.Errorf("quick-deduction(%s) = %s (%v), want %s", base, qd, err, want)
+		}
+	}
+}
+
+// TestEvalBracketIncremental_MonthAccumulated is the ISR of a month paid in
+// several parts: each payment withholds what its slice adds to the month's
+// base, and the parts add up to the tax of the whole month — never more, so a
+// worker paid weekly does not lose the exempt band four times over, and never
+// less.
+func TestEvalBracketIncremental_MonthAccumulated(t *testing.T) {
+	tiers := isrCR2026Tiers()
+	cases := []struct {
+		name     string
+		payments []string
+		parts    []string
+	}{
+		{"semimonthly", []string{"750000", "750000"}, []string{"0", "65850"}},
+		{"weekly", []string{"400000", "400000", "400000", "400000"}, []string{"0", "0", "28200", "52650"}},
+		{"monthly", []string{"5000000"}, []string{"736300"}},
+		{"uneven, crossing several tiers", []string{"1000000", "2000000", "2000000"}, []string{"8200", "314450", "413650"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			before, withheld := decimal.Zero, decimal.Zero
+			for i, p := range tc.payments {
+				after := before.Add(d(p))
+				part, err := EvalBracketIncremental(tiers, before, after)
+				if err != nil {
+					t.Fatalf("payment %d: %v", i+1, err)
+				}
+				if !part.Equal(d(tc.parts[i])) {
+					t.Errorf("payment %d: got %s, want %s", i+1, part, tc.parts[i])
+				}
+				withheld = withheld.Add(part)
+				before = after
+			}
+			whole, err := EvalBracket(tiers, before)
+			if err != nil {
+				t.Fatalf("EvalBracket: %v", err)
+			}
+			if !withheld.Equal(whole) {
+				t.Errorf("the parts add up to %s, the month's tax is %s", withheld, whole)
+			}
+		})
+	}
+}
+
+func TestEvalBracketIncremental_Errors(t *testing.T) {
+	tiers := isrCR2026Tiers()
+	if got, err := EvalBracketIncremental(tiers, d("1000000"), d("1000000")); err != nil || !got.IsZero() {
+		t.Errorf("an empty slice adds nothing: got %s (%v)", got, err)
+	}
+	if _, err := EvalBracketIncremental(tiers, d("1000000"), d("999999.99")); err == nil {
+		t.Error("expected an error when after is below before")
+	}
+	if _, err := EvalBracketIncremental(tiers, d("-1"), d("100")); err == nil {
+		t.Error("expected an error for a negative before")
+	}
+	if _, err := EvalBracketIncremental(nil, d("0"), d("100")); err == nil {
+		t.Error("expected an error for an empty table")
+	}
+}
+
 func TestEvalBracket_Errors(t *testing.T) {
 	if _, err := EvalBracket(nil, d("100")); err == nil {
 		t.Error("expected an error for an empty tier table")

@@ -30,6 +30,58 @@ func requireValue(values map[string]decimal.Decimal, key, kind string) (decimal.
 	return v, nil
 }
 
+// maxCount bounds every count coefficient. The longest legal table in the
+// seeds is cesantía's 13 rows; a count far above that is not a law but a typo
+// or a hostile preview (core-hcmrules' EvaluateFormula evaluates coefficients
+// the caller sends), and it must not size a loop or an allocation.
+const maxCount = 100
+
+// requireCount fetches a count coefficient (how many bands or rows a rule
+// has) and errors unless it is a whole number in [atLeast, maxCount]: a "2.5"
+// or a negative count is a seed typo, and reading it as 2 or 0 would silently
+// drop part of the law. The bound is checked on the decimal, before IntPart,
+// so a 2^64 cannot wrap around into a small, plausible count.
+func requireCount(values map[string]decimal.Decimal, key, kind string, atLeast int) (int, error) {
+	v, err := requireValue(values, key, kind)
+	if err != nil {
+		return 0, err
+	}
+	if !v.IsInteger() || v.LessThan(decimal.NewFromInt(int64(atLeast))) || v.GreaterThan(decimal.NewFromInt(maxCount)) {
+		return 0, fmt.Errorf("hcmrules: %s: %q = %s must be a whole number in [%d, %d]", kind, key, v, atLeast, maxCount)
+	}
+	return int(v.IntPart()), nil
+}
+
+// requireFlag fetches a 0/1 coefficient. Anything else is a data error rather
+// than "truthy": a 0.5 boundary flag means the row was typed wrong.
+func requireFlag(values map[string]decimal.Decimal, key, kind string) (bool, error) {
+	v, err := requireValue(values, key, kind)
+	if err != nil {
+		return false, err
+	}
+	return flagValue(v, key, kind)
+}
+
+// optionalFlag is requireFlag for a flag added after rows were already
+// seeded: absent reads as 0, so those rows keep their meaning.
+func optionalFlag(values map[string]decimal.Decimal, key, kind string) (bool, error) {
+	v, ok := values[key]
+	if !ok {
+		return false, nil
+	}
+	return flagValue(v, key, kind)
+}
+
+func flagValue(v decimal.Decimal, key, kind string) (bool, error) {
+	switch {
+	case v.Equal(decimal.Zero):
+		return false, nil
+	case v.Equal(decimal.NewFromInt(1)):
+		return true, nil
+	}
+	return false, fmt.Errorf("hcmrules: %s: %q = %s must be 0 or 1", kind, key, v)
+}
+
 // DecodeValues parses a rule's JSON object of coefficients/params (the
 // `coefficients` of a Formula, the `params` of an EligibilityRule as
 // GetRuleset returns them) into exact decimals.
