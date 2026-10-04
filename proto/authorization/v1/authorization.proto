@@ -60,6 +60,12 @@ message CheckPermissionRequest {
   // request in a tier, so a caller that could set them would be grading its
   // own exam.
   map<string, string> context = 7;
+
+  // consistency_token asks for a decision at least as fresh as the relation
+  // change that returned it (Zanzibar zookie). Opaque: store it and send it
+  // back, never parse it. Empty means "the freshest the PDP has". A malformed
+  // token, or one ahead of the relation store, is DENIED (fail closed).
+  string consistency_token = 8;
 }
 
 message CheckPermissionResponse {
@@ -78,6 +84,11 @@ message CheckPermissionResponse {
   // every response because the cost is a few short strings and the alternative
   // is a debug flag that is never on when it is needed.
   repeated DecisionStep trace = 3;
+
+  // decided_at is the token of the relation revision the decision saw, or
+  // empty when the decision did not read relations. Pass it as
+  // consistency_token to get a decision at least this fresh.
+  string decided_at = 4;
 }
 
 // DecisionStep is one stage of the evaluation, in plain language.
