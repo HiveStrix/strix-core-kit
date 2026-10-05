@@ -3,6 +3,7 @@ package outbox
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -182,19 +183,7 @@ func (r *Relay) drain(ctx context.Context, tenantID string) {
 		return
 	}
 	for _, row := range rows {
-		envelope, err := json.Marshal(Envelope{
-			EventID:    row.EventID,
-			TenantID:   row.TenantID,
-			Subject:    row.Subject,
-			OccurredAt: time.Now().UTC().Format(time.RFC3339),
-			Data:       row.Payload,
-		})
-		if err != nil {
-			slog.ErrorContext(ctx, "relay: marshal envelope failed", "event", row.EventID, "error", err)
-			return
-		}
-
-		if _, err := r.js.Publish(ctx, row.Subject, envelope); err != nil {
+		if err := publish(ctx, r.js, row); err != nil {
 			slog.WarnContext(ctx, "relay: publish failed, will retry", "subject", row.Subject, "error", err)
 			if bumpErr := r.store.BumpAttempts(ctx, tenantID, row.ID); bumpErr != nil {
 				slog.ErrorContext(ctx, "relay: bump attempts failed", "error", bumpErr)
@@ -212,4 +201,33 @@ func (r *Relay) drain(ctx context.Context, tenantID string) {
 			return
 		}
 	}
+}
+
+// envelopeFor builds the wire envelope of an outbox row. occurred_at is the
+// row's creation time, when the change committed, not the publish time: a
+// relay that was down for an hour must not date an hour-old change "now".
+func envelopeFor(row Row) ([]byte, error) {
+	return json.Marshal(Envelope{
+		EventID:    row.EventID,
+		TenantID:   row.TenantID,
+		Subject:    row.Subject,
+		OccurredAt: row.CreatedAt.UTC().Format(time.RFC3339),
+		Data:       row.Payload,
+	})
+}
+
+// publish sends one outbox row. The event id travels as Nats-Msg-Id, so a
+// republish inside JetStream's duplicate window (MarkPublished failed, or two
+// replicas swept the same row) is dropped by the broker instead of reaching
+// every consumer twice. Consumers stay idempotent regardless: the window is
+// finite.
+func publish(ctx context.Context, js jetstream.JetStream, row Row) error {
+	envelope, err := envelopeFor(row)
+	if err != nil {
+		return fmt.Errorf("outbox: marshal envelope of %s: %w", row.EventID, err)
+	}
+	if _, err := js.Publish(ctx, row.Subject, envelope, jetstream.WithMsgID(row.EventID)); err != nil {
+		return err
+	}
+	return nil
 }
