@@ -41,14 +41,99 @@ type Claims struct {
 	// `client_id`). On a machine-to-machine token (client_credentials,
 	// security-contract §5.6) it equals Subject: the machine IS the subject.
 	ClientID string
+
+	// PrincipalTypeClaim is the raw `principal_type` claim ("user", "service"
+	// or "agent"), "" on a token minted before protocols started stamping it.
+	// Read it through PrincipalType(), which applies the fallback; the field
+	// keeps the raw value so a log can tell "absent" from "user".
+	PrincipalTypeClaim string
+	// ViaClaim is the raw `via` claim: "assistant" on a token derived by token
+	// exchange for the assistant, "" otherwise. Read it through Via().
+	ViaClaim string
+	// InstallationID is the agent installation the token was issued to. Only
+	// agent tokens carry it, and it is the subject the PDP judges an agent as
+	// (contract AI ready §1.3): the client is per installation, so this is
+	// the same identity the client_id already names, in the PDP's vocabulary.
+	InstallationID string
+	// AgentID, AgentVersion, ProviderID, Origin and Tier describe the agent
+	// behind an agent token. They come from the signed token, so the gate
+	// may pass them to the PDP as principal attributes; they are never read
+	// from a request.
+	AgentID      string
+	AgentVersion string
+	ProviderID   string
+	Origin       string
+	Tier         string
+	// ActSubject is `act.sub` (RFC 8693): the person a trusted client says it
+	// acts for. Informative for audit; protocols only stamps it through token
+	// exchange with an actor_token, never on client_credentials. Nothing in
+	// the kit authorizes on it.
+	ActSubject string
+}
+
+// Principal types the `principal_type` claim may carry (contract AI ready
+// §1.1).
+const (
+	PrincipalUser    = "user"
+	PrincipalService = "service"
+	PrincipalAgent   = "agent"
+)
+
+// ViaAssistant is the `via` claim of a token the assistant obtained by token
+// exchange: read-only, whatever the person behind it may do (§1.3).
+const ViaAssistant = "assistant"
+
+// PrincipalType reports who the token identifies: PrincipalUser,
+// PrincipalService or PrincipalAgent.
+//
+// The `principal_type` claim decides when present. Tokens minted before
+// protocols stamped it fall back to the heuristic the kit always used: `sub`
+// equal to `client_id` is a machine, anything else a person. The claim wins
+// over the heuristic on purpose: an agent token also has sub == client_id
+// (one client per installation), and reading it as a service would hand an
+// agent everything its scope reaches.
+//
+// A value outside the three known ones is returned as is. The gate denies a
+// principal type it does not recognise; it is never silently read as one of
+// the known three.
+func (c *Claims) PrincipalType() string {
+	if c == nil {
+		return ""
+	}
+	if c.PrincipalTypeClaim != "" {
+		return c.PrincipalTypeClaim
+	}
+	if c.ClientID != "" && c.Subject == c.ClientID {
+		return PrincipalService
+	}
+	return PrincipalUser
 }
 
 // IsService reports whether the token identifies a machine rather than a
 // person: a client_credentials token has `sub` = `client_id` and carries no
 // user context (no entitlements, no amr/acr). Such a principal is authorized
 // by scope (security-contract §8.4), never by ReBAC groups.
+//
+// Since the AI ready contract it follows PrincipalType: an AGENT token also
+// has sub == client_id but is not a service, and must never be authorized by
+// scope. A Core that branches on IsService alone therefore keeps agents out
+// of the scope path even before it learns about IsAgent.
 func (c *Claims) IsService() bool {
-	return c != nil && c.ClientID != "" && c.Subject == c.ClientID
+	return c != nil && c.ClientID != "" && c.PrincipalType() == PrincipalService
+}
+
+// IsAgent reports whether the token was issued to an AI agent installation.
+func (c *Claims) IsAgent() bool {
+	return c.PrincipalType() == PrincipalAgent
+}
+
+// Via returns the `via` claim: ViaAssistant on a token the assistant derived
+// by token exchange, "" otherwise.
+func (c *Claims) Via() string {
+	if c == nil {
+		return ""
+	}
+	return c.ViaClaim
 }
 
 // HasScope reports whether the space-separated `scope` claim contains s.
@@ -175,6 +260,15 @@ func (v *Verifier) Verify(ctx context.Context, raw string) (*Claims, error) {
 	_ = tok.Get("client_id", &c.ClientID)
 	_ = tok.Get("acr", &c.ACR)
 	_ = tok.Get("email", &c.Email)
+	_ = tok.Get("principal_type", &c.PrincipalTypeClaim)
+	_ = tok.Get("via", &c.ViaClaim)
+	_ = tok.Get("installation_id", &c.InstallationID)
+	_ = tok.Get("agent_id", &c.AgentID)
+	_ = tok.Get("agent_version", &c.AgentVersion)
+	_ = tok.Get("provider_id", &c.ProviderID)
+	_ = tok.Get("origin", &c.Origin)
+	_ = tok.Get("tier", &c.Tier)
+	c.ActSubject = getActSubject(tok)
 	c.Entitlements = getStringSlice(tok, "entitlements")
 	c.AMR = getStringSlice(tok, "amr")
 	if c.TenantID == "" {
@@ -194,6 +288,17 @@ func audienceMatch(tokenAud, expected []string) bool {
 		}
 	}
 	return false
+}
+
+// getActSubject reads `act.sub` (RFC 8693 §4.1). jwx hands a custom object
+// claim back as map[string]any; anything else is treated as absent.
+func getActSubject(tok jwt.Token) string {
+	var act map[string]any
+	if err := tok.Get("act", &act); err != nil {
+		return ""
+	}
+	sub, _ := act["sub"].(string)
+	return sub
 }
 
 // getStringSlice reads a custom array claim, coercing element by element (jwx
