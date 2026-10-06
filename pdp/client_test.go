@@ -19,11 +19,31 @@ import (
 type fakePDP struct {
 	authorizationv1.UnimplementedAuthorizationServiceServer
 	handler func(context.Context, *authorizationv1.CheckPermissionRequest) (*authorizationv1.CheckPermissionResponse, error)
+	// batch answers BatchCheckPermission; nil leaves it unimplemented, like a
+	// PDP that predates the RPC.
+	batch func(context.Context, *authorizationv1.BatchCheckPermissionRequest) (*authorizationv1.BatchCheckPermissionResponse, error)
 
 	// The server runs on its own goroutine, so the recorded request crosses a
 	// goroutine boundary to reach the assertions.
 	mu      sync.Mutex
-	lastReq *authorizationv1.CheckPermissionRequest
+	lastReq    *authorizationv1.CheckPermissionRequest
+	batchCalls int
+}
+
+func (f *fakePDP) BatchCheckPermission(ctx context.Context, req *authorizationv1.BatchCheckPermissionRequest) (*authorizationv1.BatchCheckPermissionResponse, error) {
+	f.mu.Lock()
+	f.batchCalls++
+	f.mu.Unlock()
+	if f.batch == nil {
+		return f.UnimplementedAuthorizationServiceServer.BatchCheckPermission(ctx, req)
+	}
+	return f.batch(ctx, req)
+}
+
+func (f *fakePDP) batches() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.batchCalls
 }
 
 func (f *fakePDP) CheckPermission(ctx context.Context, req *authorizationv1.CheckPermissionRequest) (*authorizationv1.CheckPermissionResponse, error) {
