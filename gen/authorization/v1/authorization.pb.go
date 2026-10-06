@@ -71,8 +71,16 @@ type CheckPermissionRequest struct {
 	// back, never parse it. Empty means "the freshest the PDP has". A malformed
 	// token, or one ahead of the relation store, is DENIED (fail closed).
 	ConsistencyToken string `protobuf:"bytes,8,opt,name=consistency_token,json=consistencyToken,proto3" json:"consistency_token,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// subject_type: "" o "user" para personas, "agent" para agentes.
+	SubjectType string `protobuf:"bytes,9,opt,name=subject_type,json=subjectType,proto3" json:"subject_type,omitempty"`
+	// Atributos del principal tomados de claims ya verificados: origin, tier,
+	// provider, installation_id. Reservados: el PDP los pasa a Cedar como
+	// atributos de la entidad Agent, nunca como contexto libre.
+	PrincipalAttributes map[string]string `protobuf:"bytes,10,rep,name=principal_attributes,json=principalAttributes,proto3" json:"principal_attributes,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	// via del token ("assistant" o vacío). El PDP lo expone como context.via.
+	Via           string `protobuf:"bytes,11,opt,name=via,proto3" json:"via,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *CheckPermissionRequest) Reset() {
@@ -157,6 +165,27 @@ func (x *CheckPermissionRequest) GetContext() map[string]string {
 func (x *CheckPermissionRequest) GetConsistencyToken() string {
 	if x != nil {
 		return x.ConsistencyToken
+	}
+	return ""
+}
+
+func (x *CheckPermissionRequest) GetSubjectType() string {
+	if x != nil {
+		return x.SubjectType
+	}
+	return ""
+}
+
+func (x *CheckPermissionRequest) GetPrincipalAttributes() map[string]string {
+	if x != nil {
+		return x.PrincipalAttributes
+	}
+	return nil
+}
+
+func (x *CheckPermissionRequest) GetVia() string {
+	if x != nil {
+		return x.Via
 	}
 	return ""
 }
@@ -310,11 +339,99 @@ func (x *DecisionStep) GetDetail() string {
 	return ""
 }
 
+type BatchCheckPermissionRequest struct {
+	state         protoimpl.MessageState    `protogen:"open.v1"`
+	Items         []*CheckPermissionRequest `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BatchCheckPermissionRequest) Reset() {
+	*x = BatchCheckPermissionRequest{}
+	mi := &file_authorization_v1_authorization_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BatchCheckPermissionRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BatchCheckPermissionRequest) ProtoMessage() {}
+
+func (x *BatchCheckPermissionRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_authorization_v1_authorization_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BatchCheckPermissionRequest.ProtoReflect.Descriptor instead.
+func (*BatchCheckPermissionRequest) Descriptor() ([]byte, []int) {
+	return file_authorization_v1_authorization_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *BatchCheckPermissionRequest) GetItems() []*CheckPermissionRequest {
+	if x != nil {
+		return x.Items
+	}
+	return nil
+}
+
+type BatchCheckPermissionResponse struct {
+	state         protoimpl.MessageState     `protogen:"open.v1"`
+	Results       []*CheckPermissionResponse `protobuf:"bytes,1,rep,name=results,proto3" json:"results,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BatchCheckPermissionResponse) Reset() {
+	*x = BatchCheckPermissionResponse{}
+	mi := &file_authorization_v1_authorization_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BatchCheckPermissionResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BatchCheckPermissionResponse) ProtoMessage() {}
+
+func (x *BatchCheckPermissionResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_authorization_v1_authorization_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BatchCheckPermissionResponse.ProtoReflect.Descriptor instead.
+func (*BatchCheckPermissionResponse) Descriptor() ([]byte, []int) {
+	return file_authorization_v1_authorization_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *BatchCheckPermissionResponse) GetResults() []*CheckPermissionResponse {
+	if x != nil {
+		return x.Results
+	}
+	return nil
+}
+
 var File_authorization_v1_authorization_proto protoreflect.FileDescriptor
 
 const file_authorization_v1_authorization_proto_rawDesc = "" +
 	"\n" +
-	"$authorization/v1/authorization.proto\x12\x10authorization.v1\"\x90\x03\n" +
+	"$authorization/v1/authorization.proto\x12\x10authorization.v1\"\x83\x05\n" +
 	"\x16CheckPermissionRequest\x12\x1b\n" +
 	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x12\x1d\n" +
 	"\n" +
@@ -325,8 +442,15 @@ const file_authorization_v1_authorization_proto_rawDesc = "" +
 	"resourceId\x12\"\n" +
 	"\fentitlements\x18\x06 \x03(\tR\fentitlements\x12O\n" +
 	"\acontext\x18\a \x03(\v25.authorization.v1.CheckPermissionRequest.ContextEntryR\acontext\x12+\n" +
-	"\x11consistency_token\x18\b \x01(\tR\x10consistencyToken\x1a:\n" +
+	"\x11consistency_token\x18\b \x01(\tR\x10consistencyToken\x12!\n" +
+	"\fsubject_type\x18\t \x01(\tR\vsubjectType\x12t\n" +
+	"\x14principal_attributes\x18\n" +
+	" \x03(\v2A.authorization.v1.CheckPermissionRequest.PrincipalAttributesEntryR\x13principalAttributes\x12\x10\n" +
+	"\x03via\x18\v \x01(\tR\x03via\x1a:\n" +
 	"\fContextEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1aF\n" +
+	"\x18PrincipalAttributesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xa0\x01\n" +
 	"\x17CheckPermissionResponse\x12\x18\n" +
@@ -338,9 +462,14 @@ const file_authorization_v1_authorization_proto_rawDesc = "" +
 	"\fDecisionStep\x12\x14\n" +
 	"\x05stage\x18\x01 \x01(\tR\x05stage\x12\x18\n" +
 	"\aoutcome\x18\x02 \x01(\tR\aoutcome\x12\x16\n" +
-	"\x06detail\x18\x03 \x01(\tR\x06detail2~\n" +
+	"\x06detail\x18\x03 \x01(\tR\x06detail\"]\n" +
+	"\x1bBatchCheckPermissionRequest\x12>\n" +
+	"\x05items\x18\x01 \x03(\v2(.authorization.v1.CheckPermissionRequestR\x05items\"c\n" +
+	"\x1cBatchCheckPermissionResponse\x12C\n" +
+	"\aresults\x18\x01 \x03(\v2).authorization.v1.CheckPermissionResponseR\aresults2\xf5\x01\n" +
 	"\x14AuthorizationService\x12f\n" +
-	"\x0fCheckPermission\x12(.authorization.v1.CheckPermissionRequest\x1a).authorization.v1.CheckPermissionResponseBPZNgithub.com/hs-javierviquez/strix-core-kit/gen/authorization/v1;authorizationv1b\x06proto3"
+	"\x0fCheckPermission\x12(.authorization.v1.CheckPermissionRequest\x1a).authorization.v1.CheckPermissionResponse\x12u\n" +
+	"\x14BatchCheckPermission\x12-.authorization.v1.BatchCheckPermissionRequest\x1a..authorization.v1.BatchCheckPermissionResponseBPZNgithub.com/hs-javierviquez/strix-core-kit/gen/authorization/v1;authorizationv1b\x06proto3"
 
 var (
 	file_authorization_v1_authorization_proto_rawDescOnce sync.Once
@@ -354,23 +483,31 @@ func file_authorization_v1_authorization_proto_rawDescGZIP() []byte {
 	return file_authorization_v1_authorization_proto_rawDescData
 }
 
-var file_authorization_v1_authorization_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
+var file_authorization_v1_authorization_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
 var file_authorization_v1_authorization_proto_goTypes = []any{
-	(*CheckPermissionRequest)(nil),  // 0: authorization.v1.CheckPermissionRequest
-	(*CheckPermissionResponse)(nil), // 1: authorization.v1.CheckPermissionResponse
-	(*DecisionStep)(nil),            // 2: authorization.v1.DecisionStep
-	nil,                             // 3: authorization.v1.CheckPermissionRequest.ContextEntry
+	(*CheckPermissionRequest)(nil),       // 0: authorization.v1.CheckPermissionRequest
+	(*CheckPermissionResponse)(nil),      // 1: authorization.v1.CheckPermissionResponse
+	(*DecisionStep)(nil),                 // 2: authorization.v1.DecisionStep
+	(*BatchCheckPermissionRequest)(nil),  // 3: authorization.v1.BatchCheckPermissionRequest
+	(*BatchCheckPermissionResponse)(nil), // 4: authorization.v1.BatchCheckPermissionResponse
+	nil,                                  // 5: authorization.v1.CheckPermissionRequest.ContextEntry
+	nil,                                  // 6: authorization.v1.CheckPermissionRequest.PrincipalAttributesEntry
 }
 var file_authorization_v1_authorization_proto_depIdxs = []int32{
-	3, // 0: authorization.v1.CheckPermissionRequest.context:type_name -> authorization.v1.CheckPermissionRequest.ContextEntry
-	2, // 1: authorization.v1.CheckPermissionResponse.trace:type_name -> authorization.v1.DecisionStep
-	0, // 2: authorization.v1.AuthorizationService.CheckPermission:input_type -> authorization.v1.CheckPermissionRequest
-	1, // 3: authorization.v1.AuthorizationService.CheckPermission:output_type -> authorization.v1.CheckPermissionResponse
-	3, // [3:4] is the sub-list for method output_type
-	2, // [2:3] is the sub-list for method input_type
-	2, // [2:2] is the sub-list for extension type_name
-	2, // [2:2] is the sub-list for extension extendee
-	0, // [0:2] is the sub-list for field type_name
+	5, // 0: authorization.v1.CheckPermissionRequest.context:type_name -> authorization.v1.CheckPermissionRequest.ContextEntry
+	6, // 1: authorization.v1.CheckPermissionRequest.principal_attributes:type_name -> authorization.v1.CheckPermissionRequest.PrincipalAttributesEntry
+	2, // 2: authorization.v1.CheckPermissionResponse.trace:type_name -> authorization.v1.DecisionStep
+	0, // 3: authorization.v1.BatchCheckPermissionRequest.items:type_name -> authorization.v1.CheckPermissionRequest
+	1, // 4: authorization.v1.BatchCheckPermissionResponse.results:type_name -> authorization.v1.CheckPermissionResponse
+	0, // 5: authorization.v1.AuthorizationService.CheckPermission:input_type -> authorization.v1.CheckPermissionRequest
+	3, // 6: authorization.v1.AuthorizationService.BatchCheckPermission:input_type -> authorization.v1.BatchCheckPermissionRequest
+	1, // 7: authorization.v1.AuthorizationService.CheckPermission:output_type -> authorization.v1.CheckPermissionResponse
+	4, // 8: authorization.v1.AuthorizationService.BatchCheckPermission:output_type -> authorization.v1.BatchCheckPermissionResponse
+	7, // [7:9] is the sub-list for method output_type
+	5, // [5:7] is the sub-list for method input_type
+	5, // [5:5] is the sub-list for extension type_name
+	5, // [5:5] is the sub-list for extension extendee
+	0, // [0:5] is the sub-list for field type_name
 }
 
 func init() { file_authorization_v1_authorization_proto_init() }
@@ -384,7 +521,7 @@ func file_authorization_v1_authorization_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_authorization_v1_authorization_proto_rawDesc), len(file_authorization_v1_authorization_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   4,
+			NumMessages:   7,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

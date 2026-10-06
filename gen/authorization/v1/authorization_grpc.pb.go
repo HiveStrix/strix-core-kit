@@ -33,7 +33,8 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	AuthorizationService_CheckPermission_FullMethodName = "/authorization.v1.AuthorizationService/CheckPermission"
+	AuthorizationService_CheckPermission_FullMethodName      = "/authorization.v1.AuthorizationService/CheckPermission"
+	AuthorizationService_BatchCheckPermission_FullMethodName = "/authorization.v1.AuthorizationService/BatchCheckPermission"
 )
 
 // AuthorizationServiceClient is the client API for AuthorizationService service.
@@ -50,6 +51,7 @@ const (
 // this same interface.
 type AuthorizationServiceClient interface {
 	CheckPermission(ctx context.Context, in *CheckPermissionRequest, opts ...grpc.CallOption) (*CheckPermissionResponse, error)
+	BatchCheckPermission(ctx context.Context, in *BatchCheckPermissionRequest, opts ...grpc.CallOption) (*BatchCheckPermissionResponse, error)
 }
 
 type authorizationServiceClient struct {
@@ -70,6 +72,16 @@ func (c *authorizationServiceClient) CheckPermission(ctx context.Context, in *Ch
 	return out, nil
 }
 
+func (c *authorizationServiceClient) BatchCheckPermission(ctx context.Context, in *BatchCheckPermissionRequest, opts ...grpc.CallOption) (*BatchCheckPermissionResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(BatchCheckPermissionResponse)
+	err := c.cc.Invoke(ctx, AuthorizationService_BatchCheckPermission_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // AuthorizationServiceServer is the server API for AuthorizationService service.
 // All implementations must embed UnimplementedAuthorizationServiceServer
 // for forward compatibility.
@@ -84,6 +96,7 @@ func (c *authorizationServiceClient) CheckPermission(ctx context.Context, in *Ch
 // this same interface.
 type AuthorizationServiceServer interface {
 	CheckPermission(context.Context, *CheckPermissionRequest) (*CheckPermissionResponse, error)
+	BatchCheckPermission(context.Context, *BatchCheckPermissionRequest) (*BatchCheckPermissionResponse, error)
 	mustEmbedUnimplementedAuthorizationServiceServer()
 }
 
@@ -96,6 +109,9 @@ type UnimplementedAuthorizationServiceServer struct{}
 
 func (UnimplementedAuthorizationServiceServer) CheckPermission(context.Context, *CheckPermissionRequest) (*CheckPermissionResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method CheckPermission not implemented")
+}
+func (UnimplementedAuthorizationServiceServer) BatchCheckPermission(context.Context, *BatchCheckPermissionRequest) (*BatchCheckPermissionResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method BatchCheckPermission not implemented")
 }
 func (UnimplementedAuthorizationServiceServer) mustEmbedUnimplementedAuthorizationServiceServer() {}
 func (UnimplementedAuthorizationServiceServer) testEmbeddedByValue()                              {}
@@ -136,6 +152,24 @@ func _AuthorizationService_CheckPermission_Handler(srv interface{}, ctx context.
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AuthorizationService_BatchCheckPermission_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(BatchCheckPermissionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AuthorizationServiceServer).BatchCheckPermission(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AuthorizationService_BatchCheckPermission_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AuthorizationServiceServer).BatchCheckPermission(ctx, req.(*BatchCheckPermissionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // AuthorizationService_ServiceDesc is the grpc.ServiceDesc for AuthorizationService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -146,6 +180,10 @@ var AuthorizationService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "CheckPermission",
 			Handler:    _AuthorizationService_CheckPermission_Handler,
+		},
+		{
+			MethodName: "BatchCheckPermission",
+			Handler:    _AuthorizationService_BatchCheckPermission_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

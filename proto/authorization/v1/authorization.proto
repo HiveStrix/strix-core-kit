@@ -28,6 +28,7 @@ option go_package = "github.com/hs-javierviquez/strix-core-kit/gen/authorization
 // this same interface.
 service AuthorizationService {
   rpc CheckPermission(CheckPermissionRequest) returns (CheckPermissionResponse);
+  rpc BatchCheckPermission(BatchCheckPermissionRequest) returns (BatchCheckPermissionResponse);
 }
 
 message CheckPermissionRequest {
@@ -66,6 +67,15 @@ message CheckPermissionRequest {
   // back, never parse it. Empty means "the freshest the PDP has". A malformed
   // token, or one ahead of the relation store, is DENIED (fail closed).
   string consistency_token = 8;
+
+  // subject_type: "" o "user" para personas, "agent" para agentes.
+  string subject_type = 9;
+  // Atributos del principal tomados de claims ya verificados: origin, tier,
+  // provider, installation_id. Reservados: el PDP los pasa a Cedar como
+  // atributos de la entidad Agent, nunca como contexto libre.
+  map<string, string> principal_attributes = 10;
+  // via del token ("assistant" o vacío). El PDP lo expone como context.via.
+  string via = 11;
 }
 
 message CheckPermissionResponse {
@@ -102,3 +112,6 @@ message DecisionStep {
   // detail explains this step for a human reading the trace.
   string detail = 3;
 }
+
+message BatchCheckPermissionRequest { repeated CheckPermissionRequest items = 1; } // máx. 100, mismo tenant_id y subject en todos
+message BatchCheckPermissionResponse { repeated CheckPermissionResponse results = 1; } // mismo orden
