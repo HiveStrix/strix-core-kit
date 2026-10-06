@@ -25,7 +25,7 @@ type fakePDP struct {
 
 	// The server runs on its own goroutine, so the recorded request crosses a
 	// goroutine boundary to reach the assertions.
-	mu      sync.Mutex
+	mu         sync.Mutex
 	lastReq    *authorizationv1.CheckPermissionRequest
 	batchCalls int
 }
