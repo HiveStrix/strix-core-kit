@@ -16,7 +16,20 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/hs-javierviquez/strix-core-kit/auth"
+	"github.com/hs-javierviquez/strix-core-kit/capabilities"
 	"github.com/hs-javierviquez/strix-core-kit/pdp"
+)
+
+// Effect is what an operation does to the world, as the Core's operation
+// catalog declares it (capabilities/catalog.yaml).
+type Effect = capabilities.Effect
+
+// The effects a catalog entry may declare.
+const (
+	EffectRead               = capabilities.EffectRead
+	EffectWrite              = capabilities.EffectWrite
+	EffectExternalSideEffect = capabilities.EffectExternalSideEffect
+	EffectDelete             = capabilities.EffectDelete
 )
 
 // Gate checks entitlement locally and delegates the permission decision to the
@@ -29,6 +42,11 @@ type Gate struct {
 	// nil means the gate was built without one and a machine is decided by
 	// scope alone, exactly as before v0.18.0.
 	machines map[string]map[string]struct{}
+
+	// effects is the operation catalog's action -> effect map (Effects). nil
+	// means the Core passed none, and only the verbs read, list and get are
+	// reads for the assistant rule.
+	effects map[string]Effect
 }
 
 // Option configures a Gate when it is built.
@@ -113,6 +131,35 @@ func MachineAllow(action string, clientIDs ...string) Option {
 	}}
 }
 
+// Effects hands the gate the Core's operation catalog, action -> effect
+// (capabilities.Load(...).Effects()). It decides one thing: which actions are
+// READS for a token with `via` (the assistant), which may perform nothing
+// else (contract AI ready §1.3).
+//
+// With Effects, an action the map does not list is not a read: the
+// assistant is denied it. Without Effects, only actions whose verb is read,
+// list or get are reads, which is narrower than ScopeFor's list on purpose
+// (see capabilities.IsRead).
+//
+// The map is copied. Actions of other modules are accepted, so a Core that
+// serves several modules can hand every gate the same catalog; an effect
+// outside the four the contract defines makes New panic.
+func Effects(m map[string]Effect) Option {
+	cp := make(map[string]Effect, len(m))
+	for k, v := range m {
+		cp[k] = v
+	}
+	return Option{apply: func(g *Gate) error {
+		for action, e := range cp {
+			if !e.Valid() {
+				return fmt.Errorf("authz: Effects: action %q has unknown effect %q", action, e)
+			}
+		}
+		g.effects = cp
+		return nil
+	}}
+}
+
 // checkAction validates an action name written into the Core's code: it must
 // belong to module and have no empty or space-carrying segment, since such a
 // name never matches what a handler passes to Require.
@@ -157,6 +204,21 @@ func checkAction(action, module string) error {
 // client's audience allowlist when the token was minted. A gate built with
 // MachineAllow first asks whether this client_id is listed for this action,
 // and only then looks at the scope.
+//
+// Since the AI ready contract (§1.3) the principal type is read first, from
+// the `principal_type` claim (auth.Claims.PrincipalType):
+//
+//   - an AGENT goes through entitlement and the PDP as subject_type "agent",
+//     subject = its installation_id, with its token's attributes. Never by
+//     scope, never through the machine allowlist;
+//   - a token with `via` (the assistant) is denied every action that is not
+//     a read BEFORE anything else is asked; what is a read comes from Effects
+//     or, without it, from the verbs read, list and get. Then it goes on as
+//     the person it stands for, with via sent to the PDP;
+//   - a SERVICE is decided by scope as before, and a scope with the exact
+//     name of the action also covers it;
+//   - a PERSON is unchanged;
+//   - any other principal type is denied.
 func (g *Gate) Require(ctx context.Context, action, resourceType, resourceID string) error {
 	claims, ok := auth.ClaimsFrom(ctx)
 	if !ok {
@@ -175,43 +237,118 @@ func (g *Gate) Require(ctx context.Context, action, resourceType, resourceID str
 		return status.Errorf(codes.Internal, "authz: action %q does not belong to module %q", action, g.module)
 	}
 
-	if claims.IsService() {
+	// The assistant's token may read and nothing else, and that is decided
+	// HERE, before the PDP: a policy that forgot to forbid a write to the
+	// assistant must not be the only thing standing between it and the write
+	// (§4.1). Any non-empty via is held to it, whatever the principal type:
+	// "assistant" is the only value protocols mints, and an unknown one is
+	// safer read as the same restriction than as none.
+	if via := claims.Via(); via != "" && !capabilities.IsRead(g.effects, action) {
+		slog.InfoContext(ctx, "authz: non-read action through the assistant",
+			"action", action, "via", via, "subject", claims.Subject)
+		return status.Error(codes.PermissionDenied, "authz: the assistant may only read")
+	}
+
+	// principal_type FIRST, before anything that reads sub == client_id: an
+	// agent token has that shape too, and judging it as a service would hand
+	// it everything its scope reaches (condition 4B of the roadmap).
+	switch pt := claims.PrincipalType(); pt {
+	case auth.PrincipalService:
+		return g.requireService(ctx, claims, action)
+	case auth.PrincipalAgent:
+		return g.requireAgent(ctx, claims, action, resourceType, resourceID)
+	case auth.PrincipalUser:
+		return g.requirePerson(ctx, claims, action, resourceType, resourceID)
+	default:
+		slog.WarnContext(ctx, "authz: unknown principal type, denying",
+			"action", action, "principal_type", pt, "subject", claims.Subject)
+		return status.Error(codes.PermissionDenied, "authz: denied")
+	}
+}
+
+// requireService decides a machine (client_credentials) by scope, never by
+// the PDP. The scope that covers an action is core.read for reads (ScopeFor),
+// core.write for everything, or a scope with the EXACT name of the action
+// (§6.1: a client that may classify documents and nothing else holds
+// "billing.document.classify"). The allowlist, when there is one, is asked
+// first and narrows all three.
+func (g *Gate) requireService(ctx context.Context, claims *auth.Claims, action string) error {
+	if g.machines != nil {
+		if _, listed := g.machines[action][claims.ClientID]; !listed {
+			// The caller gets the same answer whether the action has other
+			// clients listed, none, or does not exist: which machines may
+			// do what is not the caller's business.
+			slog.InfoContext(ctx, "authz: service principal not allowlisted for action",
+				"action", action, "client", claims.ClientID)
+			return status.Error(codes.PermissionDenied, "authz: denied")
+		}
+	}
+	need := ScopeFor(action)
+	if !claims.HasScope(need) && !(need == ScopeRead && claims.HasScope(ScopeWrite)) && !claims.HasScope(action) {
+		slog.InfoContext(ctx, "authz: service principal lacks scope",
+			"action", action, "client", claims.ClientID, "scope", claims.Scope, "need", need)
 		if g.machines != nil {
-			if _, listed := g.machines[action][claims.ClientID]; !listed {
-				// The caller gets the same answer whether the action has other
-				// clients listed, none, or does not exist: which machines may
-				// do what is not the caller's business.
-				slog.InfoContext(ctx, "authz: service principal not allowlisted for action",
-					"action", action, "client", claims.ClientID)
-				return status.Error(codes.PermissionDenied, "authz: denied")
-			}
+			// Naming the missing scope here would tell a listed machine
+			// apart from an unlisted one, i.e. tell the caller whether it
+			// is on the allowlist. The detail stays in the log.
+			return status.Error(codes.PermissionDenied, "authz: denied")
 		}
-		need := ScopeFor(action)
-		if !claims.HasScope(need) && !(need == ScopeRead && claims.HasScope(ScopeWrite)) {
-			slog.InfoContext(ctx, "authz: service principal lacks scope",
-				"action", action, "client", claims.ClientID, "scope", claims.Scope, "need", need)
-			if g.machines != nil {
-				// Naming the missing scope here would tell a listed machine
-				// apart from an unlisted one, i.e. tell the caller whether it
-				// is on the allowlist. The detail stays in the log.
-				return status.Error(codes.PermissionDenied, "authz: denied")
-			}
-			return status.Errorf(codes.PermissionDenied, "authz: service principal lacks scope %q", need)
-		}
-		return nil
+		return status.Errorf(codes.PermissionDenied, "authz: service principal lacks scope %q", need)
+	}
+	return nil
+}
+
+// requireAgent decides an AI agent: the tenant must own the module, and the
+// PDP judges the agent as itself — subject_type "agent", subject = its
+// installation — with the attributes its signed token carries. Never by
+// scope: protocols refuses to give an agent core.read or core.write, and even
+// if a token carried them the gate would not look (§1.3). The machine
+// allowlist does not apply either; it names services, and an agent is not
+// one.
+func (g *Gate) requireAgent(ctx context.Context, claims *auth.Claims, action, resourceType, resourceID string) error {
+	if claims.InstallationID == "" {
+		// The installation is who the PDP knows the agent as. Without it the
+		// request would reach the PDP as nobody, or as a person.
+		slog.WarnContext(ctx, "authz: agent token without installation_id, denying",
+			"action", action, "client", claims.ClientID)
+		return status.Error(codes.PermissionDenied, "authz: denied")
 	}
 	if !hasEntitlement(claims.Entitlements, g.module) {
 		return status.Errorf(codes.PermissionDenied, "authz: tenant is not entitled to the %q module", g.module)
 	}
+	return g.decide(ctx, action, pdp.Request{
+		TenantID:            claims.TenantID,
+		SubjectID:           claims.InstallationID,
+		SubjectType:         auth.PrincipalAgent,
+		PrincipalAttributes: agentAttributes(claims),
+		Via:                 claims.Via(),
+		Action:              action,
+		ResourceType:        resourceType,
+		ResourceID:          resourceID,
+		Entitlements:        claims.Entitlements,
+	})
+}
 
-	allowed, reason, err := g.pdp.Allowed(ctx, pdp.Request{
+// requirePerson is the path every person has always taken: entitlement, then
+// the PDP. via travels so a policy can say more about the assistant than the
+// read-only floor the gate already enforced.
+func (g *Gate) requirePerson(ctx context.Context, claims *auth.Claims, action, resourceType, resourceID string) error {
+	if !hasEntitlement(claims.Entitlements, g.module) {
+		return status.Errorf(codes.PermissionDenied, "authz: tenant is not entitled to the %q module", g.module)
+	}
+	return g.decide(ctx, action, pdp.Request{
 		TenantID:     claims.TenantID,
 		SubjectID:    claims.Subject,
+		Via:          claims.Via(),
 		Action:       action,
 		ResourceType: resourceType,
 		ResourceID:   resourceID,
 		Entitlements: claims.Entitlements,
 	})
+}
+
+func (g *Gate) decide(ctx context.Context, action string, req pdp.Request) error {
+	allowed, reason, err := g.pdp.Allowed(ctx, req)
 	if err != nil {
 		// Logged, not returned to the caller: whether the PDP was unreachable
 		// or the policy said no is not the caller's business, and the
@@ -224,6 +361,25 @@ func (g *Gate) Require(ctx context.Context, action, resourceType, resourceID str
 		return status.Error(codes.PermissionDenied, "authz: denied")
 	}
 	return nil
+}
+
+// agentAttributes are the principal attributes the PDP hands Cedar for an
+// agent, from the verified token only. An empty claim is left out rather
+// than sent as "": a policy that reads a missing attribute fails to evaluate
+// and the request is denied, while "" would compare as a real value.
+func agentAttributes(c *auth.Claims) map[string]string {
+	out := map[string]string{}
+	for k, v := range map[string]string{
+		"origin":          c.Origin,
+		"tier":            c.Tier,
+		"provider":        c.ProviderID,
+		"installation_id": c.InstallationID,
+	} {
+		if v != "" {
+			out[k] = v
+		}
+	}
+	return out
 }
 
 // Claims returns the verified claims, for handlers that need the subject after
