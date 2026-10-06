@@ -11,6 +11,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
@@ -27,6 +28,9 @@ type Row struct {
 	TenantID string
 	Subject  string
 	Payload  []byte
+	// CreatedAt is when the row was written, i.e. when the change committed.
+	// It is what the envelope reports as occurred_at.
+	CreatedAt time.Time
 }
 
 // Store reads and writes the outbox and processed_events tables. Both are part
@@ -75,7 +79,7 @@ func (s *Store) FetchUnpublished(ctx context.Context, tenantID string, limit int
 		return nil, err
 	}
 	const q = `
-		SELECT id, event_id, tenant_id, subject, payload::text
+		SELECT id, event_id, tenant_id, subject, payload::text, created_at
 		FROM outbox
 		WHERE published_at IS NULL AND tenant_id = $1
 		ORDER BY id
@@ -90,7 +94,7 @@ func (s *Store) FetchUnpublished(ctx context.Context, tenantID string, limit int
 	for rows.Next() {
 		var row Row
 		var payload string
-		if err := rows.Scan(&row.ID, &row.EventID, &row.TenantID, &row.Subject, &payload); err != nil {
+		if err := rows.Scan(&row.ID, &row.EventID, &row.TenantID, &row.Subject, &payload, &row.CreatedAt); err != nil {
 			return nil, fmt.Errorf("outbox: scan: %w", err)
 		}
 		row.Payload = []byte(payload)

@@ -65,9 +65,14 @@ type CheckPermissionRequest struct {
 	// logged, never honoured. They are what the baseline policy reads to place a
 	// request in a tier, so a caller that could set them would be grading its
 	// own exam.
-	Context       map[string]string `protobuf:"bytes,7,rep,name=context,proto3" json:"context,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Context map[string]string `protobuf:"bytes,7,rep,name=context,proto3" json:"context,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	// consistency_token asks for a decision at least as fresh as the relation
+	// change that returned it (Zanzibar zookie). Opaque: store it and send it
+	// back, never parse it. Empty means "the freshest the PDP has". A malformed
+	// token, or one ahead of the relation store, is DENIED (fail closed).
+	ConsistencyToken string `protobuf:"bytes,8,opt,name=consistency_token,json=consistencyToken,proto3" json:"consistency_token,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *CheckPermissionRequest) Reset() {
@@ -149,6 +154,13 @@ func (x *CheckPermissionRequest) GetContext() map[string]string {
 	return nil
 }
 
+func (x *CheckPermissionRequest) GetConsistencyToken() string {
+	if x != nil {
+		return x.ConsistencyToken
+	}
+	return ""
+}
+
 type CheckPermissionResponse struct {
 	state   protoimpl.MessageState `protogen:"open.v1"`
 	Allowed bool                   `protobuf:"varint,1,opt,name=allowed,proto3" json:"allowed,omitempty"`
@@ -165,7 +177,11 @@ type CheckPermissionResponse struct {
 	// decision by reading it. A PEP may ignore it entirely; it is populated on
 	// every response because the cost is a few short strings and the alternative
 	// is a debug flag that is never on when it is needed.
-	Trace         []*DecisionStep `protobuf:"bytes,3,rep,name=trace,proto3" json:"trace,omitempty"`
+	Trace []*DecisionStep `protobuf:"bytes,3,rep,name=trace,proto3" json:"trace,omitempty"`
+	// decided_at is the token of the relation revision the decision saw, or
+	// empty when the decision did not read relations. Pass it as
+	// consistency_token to get a decision at least this fresh.
+	DecidedAt     string `protobuf:"bytes,4,opt,name=decided_at,json=decidedAt,proto3" json:"decided_at,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -219,6 +235,13 @@ func (x *CheckPermissionResponse) GetTrace() []*DecisionStep {
 		return x.Trace
 	}
 	return nil
+}
+
+func (x *CheckPermissionResponse) GetDecidedAt() string {
+	if x != nil {
+		return x.DecidedAt
+	}
+	return ""
 }
 
 // DecisionStep is one stage of the evaluation, in plain language.
@@ -291,7 +314,7 @@ var File_authorization_v1_authorization_proto protoreflect.FileDescriptor
 
 const file_authorization_v1_authorization_proto_rawDesc = "" +
 	"\n" +
-	"$authorization/v1/authorization.proto\x12\x10authorization.v1\"\xe3\x02\n" +
+	"$authorization/v1/authorization.proto\x12\x10authorization.v1\"\x90\x03\n" +
 	"\x16CheckPermissionRequest\x12\x1b\n" +
 	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x12\x1d\n" +
 	"\n" +
@@ -301,14 +324,17 @@ const file_authorization_v1_authorization_proto_rawDesc = "" +
 	"\vresource_id\x18\x05 \x01(\tR\n" +
 	"resourceId\x12\"\n" +
 	"\fentitlements\x18\x06 \x03(\tR\fentitlements\x12O\n" +
-	"\acontext\x18\a \x03(\v25.authorization.v1.CheckPermissionRequest.ContextEntryR\acontext\x1a:\n" +
+	"\acontext\x18\a \x03(\v25.authorization.v1.CheckPermissionRequest.ContextEntryR\acontext\x12+\n" +
+	"\x11consistency_token\x18\b \x01(\tR\x10consistencyToken\x1a:\n" +
 	"\fContextEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x81\x01\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xa0\x01\n" +
 	"\x17CheckPermissionResponse\x12\x18\n" +
 	"\aallowed\x18\x01 \x01(\bR\aallowed\x12\x16\n" +
 	"\x06reason\x18\x02 \x01(\tR\x06reason\x124\n" +
-	"\x05trace\x18\x03 \x03(\v2\x1e.authorization.v1.DecisionStepR\x05trace\"V\n" +
+	"\x05trace\x18\x03 \x03(\v2\x1e.authorization.v1.DecisionStepR\x05trace\x12\x1d\n" +
+	"\n" +
+	"decided_at\x18\x04 \x01(\tR\tdecidedAt\"V\n" +
 	"\fDecisionStep\x12\x14\n" +
 	"\x05stage\x18\x01 \x01(\tR\x05stage\x12\x18\n" +
 	"\aoutcome\x18\x02 \x01(\tR\aoutcome\x12\x16\n" +
