@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"go.opentelemetry.io/otel/trace"
 )
 
 // A row without traceparent or causation — every row of a Core without the
@@ -144,5 +146,18 @@ func TestContextCarriesTheEnvelope(t *testing.T) {
 	}
 	if TraceparentFrom(context.Background()) != "" {
 		t.Fatal("an empty context has no traceparent")
+	}
+}
+
+// The envelope's traceparent becomes the parent of the consumer's spans.
+func TestContextWithEnvelopeContinuesTheTrace(t *testing.T) {
+	const tp = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+	ctx := ContextWithEnvelope(context.Background(), Envelope{EventID: "e1", Traceparent: tp})
+	sc := trace.SpanContextFromContext(ctx)
+	if sc.TraceID().String() != "4bf92f3577b34da6a3ce929d0e0e4736" || !sc.IsRemote() {
+		t.Fatalf("span context = %v", sc)
+	}
+	if trace.SpanContextFromContext(ContextWithEnvelope(context.Background(), Envelope{})).IsValid() {
+		t.Fatal("no traceparent, no parent")
 	}
 }

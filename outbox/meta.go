@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/jackc/pgx/v5"
+	"go.opentelemetry.io/otel/propagation"
 )
 
 // TraceColumnsMigration adds the optional traceparent and causation columns
@@ -166,7 +167,13 @@ func ParseEnvelope(data []byte) (Envelope, error) {
 // ContextWithEnvelope carries a received envelope's traceparent and causation
 // through the handler, so whatever it writes can name what caused it
 // (CausationFrom, TraceparentFrom) and NextCausation can see the chain.
+//
+// The traceparent also becomes the remote parent of the spans the handler
+// starts, so the consumer's work shows up in the producer's trace.
 func ContextWithEnvelope(ctx context.Context, env Envelope) context.Context {
+	if env.Traceparent != "" {
+		ctx = propagation.TraceContext{}.Extract(ctx, propagation.MapCarrier{"traceparent": env.Traceparent})
+	}
 	return context.WithValue(ctx, envelopeKey{}, env)
 }
 

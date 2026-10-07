@@ -18,6 +18,7 @@ import (
 	"github.com/hs-javierviquez/strix-core-kit/auth"
 	"github.com/hs-javierviquez/strix-core-kit/capabilities"
 	"github.com/hs-javierviquez/strix-core-kit/pdp"
+	"github.com/hs-javierviquez/strix-core-kit/telemetry"
 )
 
 // Effect is what an operation does to the world, as the Core's operation
@@ -219,7 +220,23 @@ func checkAction(action, module string) error {
 //     name of the action also covers it;
 //   - a PERSON is unchanged;
 //   - any other principal type is denied.
+//
+// When the RPC has a recording span (telemetry.ServerOption), the decision is
+// stamped on it: tenant_id, principal_type, action and allow/deny.
 func (g *Gate) Require(ctx context.Context, action, resourceType, resourceID string) error {
+	err := g.require(ctx, action, resourceType, resourceID)
+	if c, ok := auth.ClaimsFrom(ctx); ok {
+		telemetry.SetPrincipal(ctx, c.TenantID, c.PrincipalType())
+	}
+	decision := telemetry.DecisionAllow
+	if err != nil {
+		decision = telemetry.DecisionDeny
+	}
+	telemetry.RecordDecision(ctx, action, decision)
+	return err
+}
+
+func (g *Gate) require(ctx context.Context, action, resourceType, resourceID string) error {
 	claims, ok := auth.ClaimsFrom(ctx)
 	if !ok {
 		// The interceptor guarantees claims are present, so reaching here means
