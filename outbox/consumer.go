@@ -7,6 +7,8 @@ import (
 
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
+
+	"github.com/hs-javierviquez/strix-core-kit/natsconn"
 )
 
 // Dial connects to NATS the way every Core must: the FIRST connection retries
@@ -21,16 +23,22 @@ import (
 // A nil connection with a nil error is returned when natsURL is empty: no
 // broker is configured. The error return is kept for what retrying cannot fix:
 // a malformed URL or invalid options.
+//
+// Since v0.21.0 it dials through natsconn: the service's NATS credential
+// comes from the environment (NATS_CREDS_FILE, NATS_NKEY_SEED_FILE or
+// NATS_USER/NATS_PASSWORD) and NATS_SERVICE_NAME gives it its own reply
+// inbox, so a Core moves to its own NATS user by configuration alone. With
+// none of them set it connects as before.
 func Dial(natsURL string) (*nats.Conn, jetstream.JetStream, error) {
+	return DialWith(natsURL)
+}
+
+// DialWith is Dial with natsconn options, e.g. natsconn.WithService.
+func DialWith(natsURL string, opts ...natsconn.Option) (*nats.Conn, jetstream.JetStream, error) {
 	if natsURL == "" {
 		return nil, nil, nil
 	}
-	nc, err := nats.Connect(natsURL,
-		nats.RetryOnFailedConnect(true),
-		nats.MaxReconnects(-1),
-		nats.ReconnectWait(2*time.Second),
-		nats.ReconnectJitter(500*time.Millisecond, time.Second),
-	)
+	nc, err := natsconn.Connect(natsURL, opts...)
 	if err != nil {
 		return nil, nil, err
 	}

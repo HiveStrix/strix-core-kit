@@ -31,6 +31,11 @@ type Row struct {
 	// CreatedAt is when the row was written, i.e. when the change committed.
 	// It is what the envelope reports as occurred_at.
 	CreatedAt time.Time
+	// Traceparent and Causation are read only when the relay is configured
+	// with TraceColumns (the outbox has the columns of
+	// TraceColumnsMigration). Causation is the raw jsonb, nil when NULL.
+	Traceparent string
+	Causation   []byte
 }
 
 // Store reads and writes the outbox and processed_events tables. Both are part
@@ -74,12 +79,27 @@ func (s *Store) Insert(ctx context.Context, tx pgx.Tx, tenantID, subject string,
 // history are a sequence, and delivering the second before the first would
 // leave a consumer believing the older figure.
 func (s *Store) FetchUnpublished(ctx context.Context, tenantID string, limit int) ([]Row, error) {
+	return s.fetch(ctx, tenantID, limit, false)
+}
+
+// FetchUnpublishedWithMeta is FetchUnpublished that also reads traceparent
+// and causation. It needs the columns TraceColumnsMigration adds; on an
+// outbox without them it fails, it never guesses.
+func (s *Store) FetchUnpublishedWithMeta(ctx context.Context, tenantID string, limit int) ([]Row, error) {
+	return s.fetch(ctx, tenantID, limit, true)
+}
+
+func (s *Store) fetch(ctx context.Context, tenantID string, limit int, meta bool) ([]Row, error) {
 	pool, err := s.base.PoolFor(ctx, tenantID)
 	if err != nil {
 		return nil, err
 	}
-	const q = `
-		SELECT id, event_id, tenant_id, subject, payload::text, created_at
+	cols := "id, event_id, tenant_id, subject, payload::text, created_at"
+	if meta {
+		cols += ", COALESCE(traceparent, ''), causation::text"
+	}
+	q := `
+		SELECT ` + cols + `
 		FROM outbox
 		WHERE published_at IS NULL AND tenant_id = $1
 		ORDER BY id
@@ -94,10 +114,18 @@ func (s *Store) FetchUnpublished(ctx context.Context, tenantID string, limit int
 	for rows.Next() {
 		var row Row
 		var payload string
-		if err := rows.Scan(&row.ID, &row.EventID, &row.TenantID, &row.Subject, &payload, &row.CreatedAt); err != nil {
+		dest := []any{&row.ID, &row.EventID, &row.TenantID, &row.Subject, &payload, &row.CreatedAt}
+		var causation *string
+		if meta {
+			dest = append(dest, &row.Traceparent, &causation)
+		}
+		if err := rows.Scan(dest...); err != nil {
 			return nil, fmt.Errorf("outbox: scan: %w", err)
 		}
 		row.Payload = []byte(payload)
+		if causation != nil {
+			row.Causation = []byte(*causation)
+		}
 		out = append(out, row)
 	}
 	return out, rows.Err()

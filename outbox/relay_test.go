@@ -70,3 +70,35 @@ func TestStreamCreatedWhenBrokerAppearsLate(t *testing.T) {
 		t.Fatalf("stream LATE_TEST not found on the broker: %v", err)
 	}
 }
+
+// The relay and the consumers dial through natsconn: the credential comes
+// from the environment and Config.Service gives the connection its own
+// reply inbox.
+func TestDialUsesTheServiceIdentity(t *testing.T) {
+	for _, k := range []string{"NATS_USER", "NATS_PASSWORD", "NATS_CREDS_FILE", "NATS_NKEY_SEED_FILE", "NATS_SERVICE_NAME"} {
+		t.Setenv(k, "")
+	}
+	r, err := Connect(context.Background(), "nats://127.0.0.1:1", nil, Config{StreamName: "T", SubjectPrefix: "t.>", Service: "core-x"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	if r.nc.Opts.InboxPrefix != "_INBOX.core-x" {
+		t.Fatalf("inbox = %q", r.nc.Opts.InboxPrefix)
+	}
+
+	t.Setenv("NATS_USER", "core-x")
+	t.Setenv("NATS_PASSWORD", "pw")
+	nc, _, err := Dial("nats://127.0.0.1:1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer nc.Close()
+	if nc.Opts.User != "core-x" || nc.Opts.Password != "pw" {
+		t.Fatalf("Dial ignored NATS_USER/NATS_PASSWORD: %q", nc.Opts.User)
+	}
+	t.Setenv("NATS_CREDS_FILE", "/nonexistent.creds")
+	if _, _, err := Dial("nats://127.0.0.1:1"); err == nil {
+		t.Fatal("an ambiguous credential must fail the dial")
+	}
+}

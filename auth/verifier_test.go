@@ -70,6 +70,7 @@ type claimSet struct {
 	alg      jwa.KeyAlgorithm
 	key      any
 	entitles []string
+	extra    map[string]any // any other claim, verbatim
 }
 
 func (s *signer) token(t *testing.T, c claimSet) string {
@@ -107,6 +108,9 @@ func (s *signer) token(t *testing.T, c claimSet) string {
 	}
 	if c.entitles != nil {
 		b = b.Claim("entitlements", c.entitles)
+	}
+	for k, v := range c.extra {
+		b = b.Claim(k, v)
 	}
 	tok, err := b.Build()
 	if err != nil {
