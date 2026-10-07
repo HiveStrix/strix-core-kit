@@ -87,9 +87,18 @@ func TestWrongMessageFails(t *testing.T) {
 }
 
 func TestDuplicateFails(t *testing.T) {
-	p := writeCatalog(t, strings.Replace(goodCatalog(t), "billing.invoice.void", "billing.invoice.list", 2))
+	// The same id twice is an error; the same action on two RPCs is not.
+	p := writeCatalog(t, strings.Replace(goodCatalog(t), "id: billing.invoice.void", "id: billing.invoice.list", 1))
 	code, out := capcheck(t, "--catalog", p, "--proto", "testdata/proto", "--package", "billing.v1")
 	if code != 1 || !strings.Contains(out, "already listed by entry 1") {
+		t.Fatalf("exit %d: %s", code, out)
+	}
+}
+
+func TestUngatedIsAWarning(t *testing.T) {
+	p := writeCatalog(t, strings.Replace(goodCatalog(t), "action: billing.invoice.void", `action: ""`, 1))
+	code, out := capcheck(t, "--catalog", p, "--proto", "testdata/proto", "--package", "billing.v1")
+	if code != 0 || !strings.Contains(out, "does not call the gate") {
 		t.Fatalf("exit %d: %s", code, out)
 	}
 }

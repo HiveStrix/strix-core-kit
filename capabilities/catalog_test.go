@@ -82,8 +82,8 @@ func TestParseRejects(t *testing.T) {
 	}{
 		"unknown field":      {entry(func(m map[string]string) { m["efect"] = "read" }), "efect"},
 		"missing id":         {entry(func(m map[string]string) { delete(m, "id") }), "id is missing"},
-		"missing action":     {entry(func(m map[string]string) { delete(m, "action") }), "action is missing"},
 		"id is not action":   {entry(func(m map[string]string) { m["id"] = "billing.invoices.list" }), "must equal action"},
+		"id prefix no dot":   {entry(func(m map[string]string) { m["id"] = "billing.invoice.listx" }), "must equal action"},
 		"action no verb":     {entry(func(m map[string]string) { m["id"] = "billing"; m["action"] = "billing" }), "has no verb"},
 		"action empty seg":   {entry(func(m map[string]string) { m["id"] = "billing..list"; m["action"] = "billing..list" }), "empty or space"},
 		"missing effect":     {entry(func(m map[string]string) { delete(m, "effect") }), "effect"},
@@ -106,7 +106,7 @@ func TestParseRejects(t *testing.T) {
 }
 
 func TestParseRejectsDuplicates(t *testing.T) {
-	dupAction := good + `
+	dupID := good + `
 - id: billing.invoice.list
   rpc: billing.v1.InvoiceService/ListInvoices2
   action: billing.invoice.list
@@ -115,10 +115,9 @@ func TestParseRejectsDuplicates(t *testing.T) {
   request: billing.v1.A
   response: billing.v1.B
 `
-	_, err := Parse([]byte(dupAction))
-	if err == nil || !strings.Contains(err.Error(), `id "billing.invoice.list" already listed by entry 1`) ||
-		!strings.Contains(err.Error(), `action "billing.invoice.list" already listed by entry 1`) {
-		t.Fatalf("duplicate id/action: %v", err)
+	_, err := Parse([]byte(dupID))
+	if err == nil || !strings.Contains(err.Error(), `id "billing.invoice.list" already listed by entry 1`) {
+		t.Fatalf("duplicate id: %v", err)
 	}
 	dupRPC := good + `
 - id: billing.invoice.other
@@ -132,6 +131,77 @@ func TestParseRejectsDuplicates(t *testing.T) {
 	_, err = Parse([]byte(dupRPC))
 	if err == nil || !strings.Contains(err.Error(), `rpc "billing.v1.InvoiceService/ListInvoices" already listed`) {
 		t.Fatalf("duplicate rpc: %v", err)
+	}
+}
+
+// One action may cover several RPCs (actions are coarse); the action takes
+// the most restrictive effect and the highest risk of its entries, in any
+// order, and Lookup returns that entry.
+func TestSharedActionTakesTheMostRestrictiveEffect(t *testing.T) {
+	for _, order := range [][2]string{{"read", "write"}, {"write", "read"}} {
+		c, err := Parse([]byte(`
+- id: maintenance.list.list_orders
+  rpc: maintenance.v1.S/ListOrders
+  action: maintenance.list
+  effect: ` + order[0] + `
+  risk: low
+  request: maintenance.v1.A
+  response: maintenance.v1.B
+- id: maintenance.list.list_plans
+  rpc: maintenance.v1.S/ListPlans
+  action: maintenance.list
+  effect: ` + order[1] + `
+  risk: high
+  request: maintenance.v1.A
+  response: maintenance.v1.B
+`))
+		if err != nil {
+			t.Fatalf("%v: %v", order, err)
+		}
+		if got := c.Effects()["maintenance.list"]; got != EffectWrite {
+			t.Fatalf("%v: effect = %q, want write", order, got)
+		}
+		if IsRead(c.Effects(), "maintenance.list") {
+			t.Fatalf("%v: a shared action with one write entry is a read", order)
+		}
+		if got := c.Risks()["maintenance.list"]; got != RiskHigh {
+			t.Fatalf("%v: risk = %q, want high", order, got)
+		}
+		if e, ok := c.Lookup("maintenance.list"); !ok || e.Effect != EffectWrite {
+			t.Fatalf("%v: lookup = %+v %v", order, e, ok)
+		}
+		if got := c.MethodEffects()["/maintenance.v1.S/ListOrders"]; got != Effect(order[0]) {
+			t.Fatalf("%v: method effect = %q, want the entry's own %q", order, got, order[0])
+		}
+	}
+}
+
+// An ungated RPC (empty action) is catalogued for its effect but never
+// enters the action maps.
+func TestUngatedEntry(t *testing.T) {
+	c, err := Parse([]byte(`
+- id: divisions.get_tree
+  rpc: divisions.v1.DivisionsService/GetTree
+  action: ""
+  effect: read
+  risk: low
+  request: divisions.v1.GetTreeRequest
+  response: divisions.v1.Tree
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(c.Ungated()) != 1 || len(c.Effects()) != 0 || len(c.Risks()) != 0 {
+		t.Fatalf("ungated=%d effects=%v risks=%v", len(c.Ungated()), c.Effects(), c.Risks())
+	}
+	if _, ok := c.Lookup(""); ok {
+		t.Fatal("lookup of the empty action found an entry")
+	}
+	if c.MethodEffects()["/divisions.v1.DivisionsService/GetTree"] != EffectRead {
+		t.Fatal("ungated entry missing from MethodEffects")
+	}
+	if err := c.CheckModules("divisions"); err != nil {
+		t.Fatalf("CheckModules on an ungated entry: %v", err)
 	}
 }
 

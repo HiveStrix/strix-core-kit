@@ -102,6 +102,11 @@ func run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, strings.Join(problems, "\n"))
 		return 1
 	}
+	// An ungated RPC is legal but worth seeing every time: nothing but the
+	// token decides who may call it, an agent included.
+	for _, e := range cat.Ungated() {
+		fmt.Fprintf(stdout, "capcheck: warning: %s does not call the gate (action empty)\n", e.RPC)
+	}
 	fmt.Fprintf(stdout, "capcheck: %s OK, %d operations, %d rpcs\n", *catalogPath, len(cat.Entries), len(rpcs))
 	return 0
 }

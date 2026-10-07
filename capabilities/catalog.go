@@ -37,12 +37,20 @@ func (r Risk) Valid() bool {
 
 // Entry is one operation of the catalog: one public RPC.
 type Entry struct {
-	// ID identifies the entry and equals Action (contract AI ready §1.4).
+	// ID identifies the entry. It equals Action, or is Action plus a suffix
+	// ("<action>.<rpc>") when one action covers several RPCs: actions are
+	// coarse in practice (maintenance.list covers two dozen RPCs), so the id,
+	// not the action, is what is unique (amendment to contract AI ready §1.4,
+	// 2026-10-06). An ungated entry (Action empty) may use any id.
 	ID string `yaml:"id"`
 	// RPC is "<package>.<Service>/<Method>", e.g.
 	// "billing.v1.InvoiceService/ListInvoices".
 	RPC string `yaml:"rpc"`
-	// Action is the name the handler passes to authz.Gate.Require.
+	// Action is the name the handler passes to authz.Gate.Require. Empty
+	// means the RPC does not call the gate at all (claims only): it is
+	// catalogued so its effect is known to interceptors, but it never enters
+	// Effects, and cmd/capcheck lists it as a warning, because nothing but
+	// the token decides who may call it.
 	Action    string `yaml:"action"`
 	Effect    Effect `yaml:"effect"`
 	Risk      Risk   `yaml:"risk"`
@@ -97,7 +105,8 @@ var (
 // Parse decodes and validates a catalog. Unknown fields are an error (a
 // misspelt "efect" must not quietly leave an entry without an effect), and so
 // is every missing or out-of-enum field, a malformed rpc or message name, an
-// id that is not its action, and an rpc, id or action listed twice. All the
+// id that is neither its action nor its action plus a suffix, and an rpc or
+// id listed twice (an action may repeat: it can cover several RPCs). All the
 // problems are reported together, one per line.
 func Parse(data []byte) (*Catalog, error) {
 	dec := yaml.NewDecoder(bytes.NewReader(data))
@@ -124,18 +133,18 @@ func (c *Catalog) validate() error {
 		}
 		problems = append(problems, fmt.Sprintf("entry %d (%s): %s", i+1, name, fmt.Sprintf(format, args...)))
 	}
-	seenID, seenAction, seenRPC := map[string]int{}, map[string]int{}, map[string]int{}
+	seenID, seenRPC := map[string]int{}, map[string]int{}
 	for i, e := range c.Entries {
 		if e.ID == "" {
 			add(i, e, "id is missing")
 		}
-		if e.Action == "" {
-			add(i, e, "action is missing")
-		} else if err := checkActionName(e.Action); err != nil {
-			add(i, e, "%v", err)
-		}
-		if e.ID != "" && e.Action != "" && e.ID != e.Action {
-			add(i, e, "id %q must equal action %q", e.ID, e.Action)
+		if e.Action != "" {
+			if err := checkActionName(e.Action); err != nil {
+				add(i, e, "%v", err)
+			}
+			if e.ID != "" && e.ID != e.Action && !strings.HasPrefix(e.ID, e.Action+".") {
+				add(i, e, "id %q must equal action %q or start with %q", e.ID, e.Action, e.Action+".")
+			}
 		}
 		if !rpcRe.MatchString(e.RPC) {
 			add(i, e, "rpc %q is not \"<package>.<Service>/<Method>\"", e.RPC)
@@ -156,7 +165,7 @@ func (c *Catalog) validate() error {
 			seen  map[string]int
 			key   string
 			field string
-		}{{seenID, e.ID, "id"}, {seenAction, e.Action, "action"}, {seenRPC, e.RPC, "rpc"}} {
+		}{{seenID, e.ID, "id"}, {seenRPC, e.RPC, "rpc"}} {
 			if d.key == "" {
 				continue
 			}
@@ -198,6 +207,9 @@ func (c *Catalog) CheckModules(modules ...string) error {
 	}
 	var problems []string
 	for i, e := range c.Entries {
+		if e.Action == "" {
+			continue
+		}
 		mod, _, _ := strings.Cut(e.Action, ".")
 		if !allowed[mod] {
 			problems = append(problems, fmt.Sprintf("entry %d (%s): action module %q is not one of %v", i+1, e.ID, mod, modules))
@@ -209,11 +221,47 @@ func (c *Catalog) CheckModules(modules ...string) error {
 	return nil
 }
 
-// Effects is action -> effect, what authz.Effects takes.
+// Effects is action -> effect, what authz.Effects takes. When one action
+// covers several RPCs with different effects, the action gets the most
+// restrictive of them (delete over external_side_effect over write over
+// read): the gate sees the action, not the RPC, so an action that is a read
+// for one RPC and a write for another is a write. Ungated entries are left
+// out: no Require call ever names them.
 func (c *Catalog) Effects() map[string]Effect {
 	out := make(map[string]Effect, len(c.Entries))
 	for _, e := range c.Entries {
-		out[e.Action] = e.Effect
+		if e.Action == "" {
+			continue
+		}
+		if cur, ok := out[e.Action]; !ok || effectRank(e.Effect) > effectRank(cur) {
+			out[e.Action] = e.Effect
+		}
+	}
+	return out
+}
+
+// effectRank orders effects from least to most restrictive.
+func effectRank(e Effect) int {
+	switch e {
+	case EffectRead:
+		return 0
+	case EffectWrite:
+		return 1
+	case EffectExternalSideEffect:
+		return 2
+	case EffectDelete:
+		return 3
+	}
+	return 4 // unknown: treated as the most restrictive
+}
+
+// Ungated returns the entries whose RPC does not call the gate.
+func (c *Catalog) Ungated() []Entry {
+	var out []Entry
+	for _, e := range c.Entries {
+		if e.Action == "" {
+			out = append(out, e)
+		}
 	}
 	return out
 }
@@ -229,23 +277,42 @@ func (c *Catalog) MethodEffects() map[string]Effect {
 	return out
 }
 
-// Risks is action -> risk.
+// Risks is action -> risk, the highest among the action's entries.
 func (c *Catalog) Risks() map[string]Risk {
 	out := make(map[string]Risk, len(c.Entries))
 	for _, e := range c.Entries {
-		out[e.Action] = e.Risk
+		if e.Action == "" {
+			continue
+		}
+		if cur, ok := out[e.Action]; !ok || riskRank(e.Risk) > riskRank(cur) {
+			out[e.Action] = e.Risk
+		}
 	}
 	return out
 }
 
-// Lookup returns the entry of an action.
+func riskRank(r Risk) int {
+	switch r {
+	case RiskLow:
+		return 0
+	case RiskMedium:
+		return 1
+	case RiskHigh:
+		return 2
+	}
+	return 3 // critical, or unknown
+}
+
+// Lookup returns the most restrictive entry of an action (see Effects).
 func (c *Catalog) Lookup(action string) (Entry, bool) {
+	var best Entry
+	found := false
 	for _, e := range c.Entries {
-		if e.Action == action {
-			return e, true
+		if e.Action == action && action != "" && (!found || effectRank(e.Effect) > effectRank(best.Effect)) {
+			best, found = e, true
 		}
 	}
-	return Entry{}, false
+	return best, found
 }
 
 // RPC is one method a Core's proto declares, as cmd/capcheck reads it.
