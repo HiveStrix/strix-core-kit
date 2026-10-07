@@ -35,8 +35,16 @@ type Config struct {
 	SubjectPrefix string
 	// ExtraTenants are swept on top of those with a live pool. After a restart
 	// a tenant with pending events but no traffic would otherwise never be
-	// visited.
+	// visited. With Discover they only matter until the first discovery
+	// succeeds.
 	ExtraTenants []string
+	// Discover lists the tenants where this Core is activated (ActiveTenants
+	// builds it from the tenant DSN template). When set, the relay sweeps
+	// exactly those, re-asked every DiscoverEvery, instead of the tenants with
+	// a live pool plus ExtraTenants.
+	Discover func(ctx context.Context) ([]string, error)
+	// DiscoverEvery is how often Discover is asked again. Zero means 1 minute.
+	DiscoverEvery time.Duration
 	// Interval between sweeps. Zero means 2s.
 	Interval time.Duration
 	// Batch is how many events one tenant yields per sweep. Zero means 100.
@@ -60,6 +68,7 @@ type Relay struct {
 	// goroutine, never concurrently.
 	streamReady bool
 	warned      bool
+	disc        discovery
 }
 
 // streamAttemptTimeout bounds one attempt at creating the stream, so a broker
@@ -149,7 +158,7 @@ func (r *Relay) Run(ctx context.Context) {
 			if !r.ensureStream(ctx) {
 				continue
 			}
-			for _, tenantID := range r.tenants() {
+			for _, tenantID := range r.tenants(ctx) {
 				r.drain(ctx, tenantID)
 			}
 		}
@@ -164,24 +173,13 @@ func (r *Relay) Close() {
 	}
 }
 
-func (r *Relay) tenants() []string {
-	seen := map[string]bool{}
-	out := []string{}
-	for _, t := range append(r.store.KnownTenants(), r.cfg.ExtraTenants...) {
-		if t != "" && !seen[t] {
-			seen[t] = true
-			out = append(out, t)
-		}
-	}
-	return out
-}
-
 func (r *Relay) drain(ctx context.Context, tenantID string) {
 	rows, err := r.store.FetchUnpublished(ctx, tenantID, r.cfg.Batch)
 	if err != nil {
-		slog.ErrorContext(ctx, "relay: fetch outbox failed", "tenant", tenantID, "error", err)
+		r.fetchFailed(ctx, tenantID, err)
 		return
 	}
+	r.fetchOK(tenantID)
 	for _, row := range rows {
 		if err := publish(ctx, r.js, row); err != nil {
 			slog.WarnContext(ctx, "relay: publish failed, will retry", "subject", row.Subject, "error", err)
