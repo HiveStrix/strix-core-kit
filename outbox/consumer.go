@@ -24,7 +24,7 @@ import (
 // broker is configured. The error return is kept for what retrying cannot fix:
 // a malformed URL or invalid options.
 //
-// Since v0.20.0 it dials through natsconn: the service's NATS credential
+// Since v0.21.0 it dials through natsconn: the service's NATS credential
 // comes from the environment (NATS_CREDS_FILE, NATS_NKEY_SEED_FILE or
 // NATS_USER/NATS_PASSWORD) and NATS_SERVICE_NAME gives it its own reply
 // inbox, so a Core moves to its own NATS user by configuration alone. With
