@@ -3,11 +3,13 @@ module github.com/hs-javierviquez/strix-core-kit
 go 1.25.7
 
 require (
+	github.com/bufbuild/protocompile v0.14.1
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/lestrrat-go/jwx/v3 v3.1.1
 	github.com/nats-io/nats.go v1.52.0
 	github.com/pressly/goose/v3 v3.27.3
 	github.com/shopspring/decimal v1.4.0
+	go.yaml.in/yaml/v3 v3.0.5
 	golang.org/x/text v0.40.0
 	google.golang.org/genproto/googleapis/api v0.0.0-20260526163538-3dc84a4a5aaa
 	google.golang.org/grpc v1.83.0

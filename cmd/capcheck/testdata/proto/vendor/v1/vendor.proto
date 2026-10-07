@@ -1,0 +1,10 @@
+syntax = "proto3";
+
+package vendor.v1;
+
+// A synced copy of another Core's contract: not this Core's to catalogue.
+service VendorService {
+  rpc Ping(PingRequest) returns (PingRequest);
+}
+
+message PingRequest {}

@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package billing.v1;
+
+import "google/api/annotations.proto";
+import "google/protobuf/empty.proto";
+
+service InvoiceService {
+  rpc ListInvoices(ListInvoicesRequest) returns (ListInvoicesResponse) {
+    option (google.api.http) = {get: "/v1/invoices"};
+  }
+  rpc VoidInvoice(VoidInvoiceRequest) returns (google.protobuf.Empty);
+  rpc WatchInvoices(Outer.Inner) returns (stream .billing.v1.ListInvoicesResponse);
+}
+
+message ListInvoicesRequest { int32 page = 1; }
+message ListInvoicesResponse { repeated string ids = 1; }
+message VoidInvoiceRequest { string id = 1; }
+message Outer {
+  message Inner { string q = 1; }
+}

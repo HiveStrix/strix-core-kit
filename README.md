@@ -27,9 +27,10 @@ El detalle completo está en
 
 | Paquete | Qué es |
 |---|---|
-| `auth` | El PEP: verificación local del access token (EdDSA fijado en código, `typ=at+jwt`, `iss`, `aud` any-of, `tenant_id` obligatorio) y el interceptor gRPC que siembra la identidad en el contexto. Desde v0.12.0, también la identidad DE SERVICIO del core (`ServiceTokens`: `client_credentials` contra strix-auth, un token por tenant y audiencia, security-contract §5.6) y `Outgoing(ctx, tokens, aud)`, que reenvía el bearer del usuario cuando lo hay y acuña el de servicio solo cuando no hay nadie detrás de la llamada (un consumidor de eventos, un job) |
-| `pdp` | Cliente de `CheckPermission`, fail-closed y con deadline |
-| `authz` | El gate deny-by-default: entitlement local y decisión delegada al PDP; a un principal de servicio (`Claims.IsService`) lo decide el scope (`core.read` / `core.write` por el verbo de la acción, `ScopeFor`), nunca el PDP. Desde v0.18.0, `authz.New(pdp, módulo, authz.MachineAllow(acción, clientIDs...)...)` suma una **allowlist de `client_id` por acción exacta**, opt-in: con al menos una entrada, una máquina pasa solo si está listada para ESA acción **y** su scope alcanza, y toda acción que no aparece le queda cerrada a cualquier máquina; sin ninguna, el gate se comporta igual que antes. Las personas no cambian. Una acción de otro módulo, sin verbo, o un `client_id` vacío o con espacios hacen fallar `New` al arrancar (panic, error de programación). Con allowlist, toda denegación a una máquina —también la de scope insuficiente— es la misma `authz: denied` del PDP: no dice qué clientes existen, si la acción tiene entrada ni si el propio llamante está listado (el motivo queda en el log) |
+| `auth` | El PEP: verificación local del access token (EdDSA fijado en código, `typ=at+jwt`, `iss`, `aud` any-of, `tenant_id` obligatorio) y el interceptor gRPC que siembra la identidad en el contexto. Desde v0.12.0, también la identidad DE SERVICIO del core (`ServiceTokens`: `client_credentials` contra strix-auth, un token por tenant y audiencia, security-contract §5.6) y `Outgoing(ctx, tokens, aud)`, que reenvía el bearer del usuario cuando lo hay y acuña el de servicio solo cuando no hay nadie detrás de la llamada (un consumidor de eventos, un job) Desde v0.20.0 (contrato AI ready §1.1), `Claims` lee `principal_type`, `via`, `installation_id`, `agent_id`, `agent_version`, `provider_id`, `origin`, `tier` y `act.sub`; `PrincipalType()` decide por el claim y, si falta, por la heurística de siempre (`sub == client_id` → servicio). `IsAgent()` y `Via()` son nuevos, e `IsService()` sigue a `PrincipalType()`: un token de agente tiene `sub == client_id` y **no** es un servicio |
+| `pdp` | Cliente de `CheckPermission`, fail-closed y con deadline Desde v0.20.0, `Request` suma `SubjectType`, `PrincipalAttributes`, `Via` y `ConsistencyToken`; `Check` devuelve la `Decision` entera (con `DecidedAt`) y `BatchAllowed` verifica hasta `MaxBatch` (100) ítems del mismo tenant y sujeto en un viaje, todo o nada: un error, un PDP sin la RPC o una cantidad de resultados distinta no devuelve ninguna decisión |
+| `authz` | El gate deny-by-default: entitlement local y decisión delegada al PDP; a un principal de servicio (`Claims.IsService`) lo decide el scope (`core.read` / `core.write` por el verbo de la acción, `ScopeFor`), nunca el PDP. Desde v0.18.0, `authz.New(pdp, módulo, authz.MachineAllow(acción, clientIDs...)...)` suma una **allowlist de `client_id` por acción exacta**, opt-in: con al menos una entrada, una máquina pasa solo si está listada para ESA acción **y** su scope alcanza, y toda acción que no aparece le queda cerrada a cualquier máquina; sin ninguna, el gate se comporta igual que antes. Las personas no cambian. Una acción de otro módulo, sin verbo, o un `client_id` vacío o con espacios hacen fallar `New` al arrancar (panic, error de programación). Con allowlist, toda denegación a una máquina —también la de scope insuficiente— es la misma `authz: denied` del PDP: no dice qué clientes existen, si la acción tiene entrada ni si el propio llamante está listado (el motivo queda en el log) Desde v0.20.0 el gate mira **primero** `PrincipalType()` (§1.3): un **agente** pasa por entitlement y PDP como `subject_type: agent`, sujeto = `installation_id`, con `origin`/`tier`/`provider`/`installation_id` del token como atributos, nunca por scope ni por la allowlist; un token con **`via`** (el asistente) recibe `PermissionDenied` en toda acción que no sea de lectura **antes** del PDP, y después va como la persona con `Via` al PDP; un **servicio** también pasa con un scope igual al nombre exacto de la acción (§6.1), siempre bajo `MachineAllow`; un `principal_type` desconocido se niega. Qué es lectura lo dice `authz.Effects(cat.Effects())`; sin catálogo, solo los verbos `read`, `list` y `get` (más estrecho que `ScopeFor` a propósito), y con catálogo una acción que no figura **no** es lectura |
+| `capabilities` | Desde v0.20.0, el lector del catálogo de operaciones de cada core (`capabilities/catalog.yaml`, contrato AI ready §1.4): `Load`/`Parse`/`MustParse` validan campos y enums (campo desconocido, `id` distinto de `action`, `rpc`/`id`/`action` repetidos: todo error, todos juntos) y devuelven `Effects()` (acción → efecto, para `authz.Effects`), `MethodEffects()` (método gRPC → efecto, para `idempotency`), `Risks()` y `Lookup`. `IsRead(effects, acción)` es LA clasificación de lectura de la plataforma. El chequeo de CI es `cmd/capcheck` (ver «Catálogo de operaciones») |
 | `tenantctx` | El tenant y el subject verificados, a través del contexto |
 | `tenancy` | Un pool por tenant (LRU, apertura perezosa), resolución de DSN por plantilla, `Base` para repositorios (Conn/InTx/InTxFor), migraciones goose y descubrimiento de tenants por Postgres |
 | `outbox` | El outbox transaccional (`outbox`, `processed_events`) y el relay que lo drena a JetStream. Desde v0.15.0 el relay tolera un broker caído o sin DNS al arrancar: `Connect` ya no falla por eso y el stream se crea en cuanto NATS responde. Desde v0.16.0, también el lado del consumidor: `Dial` conecta como el relay (el primer dial reintenta) y `Subscribe(ctx, js, Subscription)` engancha un durable al stream de otro core y no se rinde nunca — broker caído, stream que todavía no existe o durable que no se pudo crear son el mismo "todavía no", y reintenta (5 s doblando hasta `MaxRetry`, 5 min por defecto) hasta engancharse. El ack, el nak con espera y la idempotencia (`MarkProcessed`) siguen siendo del core |
@@ -110,6 +111,35 @@ barato precisamente porque nunca renderiza.
 Ojo con los números que van a la base **como string** sin parsearse en Go: ahí no
 hay nada que los rechace, y `numeric` de Postgres acepta magnitudes que después
 nadie puede leer de vuelta.
+
+## Catálogo de operaciones
+
+Cada core declara en `capabilities/catalog.yaml` una entrada por RPC pública
+(esquema en el contrato AI ready §1.4) y lo embebe:
+
+```go
+//go:embed capabilities/catalog.yaml
+var catalogYAML []byte
+
+cat := capabilities.MustParse(catalogYAML)
+gate := authz.New(pdpClient, "billing", authz.Effects(cat.Effects()))
+```
+
+En su CI corre el chequeo, que falla si una RPC del core no está catalogada,
+si una entrada nombra una RPC que no existe o con otro request/response, si
+hay `id`/`action`/`rpc` repetidos o si la acción no es de los módulos dados:
+
+```
+go run github.com/hs-javierviquez/strix-core-kit/cmd/capcheck@v0.20.0 \
+    --catalog capabilities/catalog.yaml --proto proto \
+    --package billing.v1 --module billing
+```
+
+`--proto`, `--package` y `--module` se repiten. `--package` limita el chequeo
+a los servicios de esos paquetes: las copias sincronizadas de contratos ajenos
+que un core guarda bajo `proto/` no son suyas para catalogar. Los protos se
+parsean sin compilar (no hace falta buf ni googleapis). Salida 0 limpio, 1
+problemas del catálogo (todos impresos), 2 uso o E/S.
 
 ## Los protos
 
