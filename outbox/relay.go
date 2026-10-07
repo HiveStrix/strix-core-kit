@@ -9,6 +9,8 @@ import (
 
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
+
+	"github.com/hs-javierviquez/strix-core-kit/natsconn"
 )
 
 // Envelope is what actually travels on the wire.
@@ -56,6 +58,10 @@ type Config struct {
 	// in the envelope. Off by default: a Core's outbox table is its own, and
 	// reading columns it does not have would stop the relay cold.
 	TraceColumns bool
+	// Service is the Core's NATS identity (natsconn.WithService): the
+	// connection's name and its own reply inbox, _INBOX.<Service>. Empty
+	// falls back to NATS_SERVICE_NAME.
+	Service string
 }
 
 // Relay polls each tenant's outbox and publishes pending events to JetStream,
@@ -103,7 +109,11 @@ func Connect(ctx context.Context, natsURL string, store *Store, cfg Config) (*Re
 	if cfg.Batch == 0 {
 		cfg.Batch = 100
 	}
-	nc, js, err := Dial(natsURL)
+	var opts []natsconn.Option
+	if cfg.Service != "" {
+		opts = append(opts, natsconn.WithService(cfg.Service))
+	}
+	nc, js, err := DialWith(natsURL, opts...)
 	if err != nil {
 		return nil, err
 	}
