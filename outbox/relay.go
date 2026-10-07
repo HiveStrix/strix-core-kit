@@ -25,6 +25,16 @@ type Envelope struct {
 	Subject    string          `json:"subject"`
 	OccurredAt string          `json:"occurred_at"`
 	Data       json.RawMessage `json:"data"`
+
+	// Traceparent is the W3C trace context of the request that wrote the
+	// event, so the consumer's work joins the same trace. Optional: absent
+	// on an outbox without the columns, and on events written without it.
+	Traceparent string `json:"traceparent,omitempty"`
+	// Causation says which event and which principal led to this one, and
+	// the chain of principals before it. Optional, like Traceparent. It is
+	// what lets an agent that reacts to events notice it is reacting to its
+	// own (NextCausation).
+	Causation *Causation `json:"causation,omitempty"`
 }
 
 // Config names the Core's stream and the tenants to sweep.
@@ -41,6 +51,11 @@ type Config struct {
 	Interval time.Duration
 	// Batch is how many events one tenant yields per sweep. Zero means 100.
 	Batch int
+	// TraceColumns says the outbox has the traceparent and causation columns
+	// (TraceColumnsMigration applied), so the relay reads them and puts them
+	// in the envelope. Off by default: a Core's outbox table is its own, and
+	// reading columns it does not have would stop the relay cold.
+	TraceColumns bool
 }
 
 // Relay polls each tenant's outbox and publishes pending events to JetStream,
@@ -177,7 +192,7 @@ func (r *Relay) tenants() []string {
 }
 
 func (r *Relay) drain(ctx context.Context, tenantID string) {
-	rows, err := r.store.FetchUnpublished(ctx, tenantID, r.cfg.Batch)
+	rows, err := r.pending(ctx, tenantID)
 	if err != nil {
 		slog.ErrorContext(ctx, "relay: fetch outbox failed", "tenant", tenantID, "error", err)
 		return
@@ -203,17 +218,35 @@ func (r *Relay) drain(ctx context.Context, tenantID string) {
 	}
 }
 
+// pending is the next batch of one tenant, with traceparent and causation
+// when the outbox has the columns.
+func (r *Relay) pending(ctx context.Context, tenantID string) ([]Row, error) {
+	return r.store.fetch(ctx, tenantID, r.cfg.Batch, r.cfg.TraceColumns)
+}
+
 // envelopeFor builds the wire envelope of an outbox row. occurred_at is the
 // row's creation time, when the change committed, not the publish time: a
 // relay that was down for an hour must not date an hour-old change "now".
+//
+// traceparent and causation go out only when the row has them, so an
+// envelope from a Core without the columns is byte for byte what it was.
 func envelopeFor(row Row) ([]byte, error) {
-	return json.Marshal(Envelope{
-		EventID:    row.EventID,
-		TenantID:   row.TenantID,
-		Subject:    row.Subject,
-		OccurredAt: row.CreatedAt.UTC().Format(time.RFC3339),
-		Data:       row.Payload,
-	})
+	env := Envelope{
+		EventID:     row.EventID,
+		TenantID:    row.TenantID,
+		Subject:     row.Subject,
+		OccurredAt:  row.CreatedAt.UTC().Format(time.RFC3339),
+		Data:        row.Payload,
+		Traceparent: row.Traceparent,
+	}
+	if len(row.Causation) > 0 {
+		var c Causation
+		if err := json.Unmarshal(row.Causation, &c); err != nil {
+			return nil, fmt.Errorf("causation: %w", err)
+		}
+		env.Causation = &c
+	}
+	return json.Marshal(env)
 }
 
 // publish sends one outbox row. The event id travels as Nats-Msg-Id, so a
