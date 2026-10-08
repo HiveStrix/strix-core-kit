@@ -109,39 +109,75 @@ type Pools struct {
 	resolver DSNResolver
 	limit    int
 
+	settings PoolSettings
+
 	mu      sync.Mutex
 	order   *list.List               // front = most recently used
 	entries map[string]*list.Element // tenantID -> element holding *poolEntry
+
+	stopOnce sync.Once
+	stop     chan struct{}
 }
 
 type poolEntry struct {
 	tenantID string
 	pool     *pgxpool.Pool
+	lastUsed time.Time
 }
 
-// NewPools builds a pool registry holding at most limit pools.
+// NewPools builds a pool registry holding at most limit pools, each sized by
+// PoolSettingsFromEnv (STRIX_DB_POOL_*).
 func NewPools(resolver DSNResolver, limit int) *Pools {
+	return NewPoolsWithSettings(resolver, limit, PoolSettingsFromEnv())
+}
+
+// NewPoolsWithSettings is NewPools with explicit pool settings. When
+// settings.IdleClose > 0 a background reaper closes the pool of any tenant no
+// request used for that long; the next request reopens it.
+func NewPoolsWithSettings(resolver DSNResolver, limit int, settings PoolSettings) *Pools {
 	if limit < 1 {
 		limit = 1
 	}
-	return &Pools{
+	p := &Pools{
 		resolver: resolver,
 		limit:    limit,
+		settings: settings,
 		order:    list.New(),
 		entries:  make(map[string]*list.Element, limit),
+		stop:     make(chan struct{}),
 	}
+	if settings.IdleClose > 0 {
+		go p.reap()
+	}
+	return p
 }
 
-// Get returns the pool for a tenant, opening it on first use.
+// Get returns the pool for a tenant, opening it on first use. It counts as use:
+// it keeps the pool from being closed for inactivity.
 func (p *Pools) Get(ctx context.Context, tenantID string) (*pgxpool.Pool, error) {
+	return p.get(ctx, tenantID, true)
+}
+
+// GetBackground is Get for background sweeps (the outbox relay). It does not
+// count as use, so a tenant with no real traffic still releases its pool even
+// though the relay polls it every few seconds.
+func (p *Pools) GetBackground(ctx context.Context, tenantID string) (*pgxpool.Pool, error) {
+	return p.get(ctx, tenantID, false)
+}
+
+func (p *Pools) get(ctx context.Context, tenantID string, touch bool) (*pgxpool.Pool, error) {
 	if tenantID == "" {
 		return nil, ErrNoTenant
 	}
 
 	p.mu.Lock()
 	if el, ok := p.entries[tenantID]; ok {
-		p.order.MoveToFront(el)
-		pool := el.Value.(*poolEntry).pool
+		e := el.Value.(*poolEntry)
+		if touch {
+			p.order.MoveToFront(el)
+			e.lastUsed = time.Now()
+		}
+		pool := e.pool
 		p.mu.Unlock()
 		return pool, nil
 	}
@@ -154,7 +190,7 @@ func (p *Pools) Get(ctx context.Context, tenantID string) (*pgxpool.Pool, error)
 	if err != nil {
 		return nil, fmt.Errorf("tenancy: resolve tenant %q: %w", tenantID, err)
 	}
-	pool, err := connect(ctx, dsn)
+	pool, err := connect(ctx, dsn, p.settings)
 	if err != nil {
 		return nil, err
 	}
@@ -164,12 +200,16 @@ func (p *Pools) Get(ctx context.Context, tenantID string) (*pgxpool.Pool, error)
 	// Another goroutine may have opened it while this one was dialing. Keep
 	// theirs and discard this one, so a tenant never has two live pools.
 	if el, ok := p.entries[tenantID]; ok {
-		p.order.MoveToFront(el)
+		e := el.Value.(*poolEntry)
+		if touch {
+			p.order.MoveToFront(el)
+			e.lastUsed = time.Now()
+		}
 		pool.Close()
-		return el.Value.(*poolEntry).pool, nil
+		return e.pool, nil
 	}
 
-	el := p.order.PushFront(&poolEntry{tenantID: tenantID, pool: pool})
+	el := p.order.PushFront(&poolEntry{tenantID: tenantID, pool: pool, lastUsed: time.Now()})
 	p.entries[tenantID] = el
 	p.evictLocked()
 	return pool, nil
@@ -209,8 +249,43 @@ func (p *Pools) KnownTenants() []string {
 	return out
 }
 
+// reap closes the pools nobody used for IdleClose. A pool with borrowed
+// connections is left alone.
+func (p *Pools) reap() {
+	every := p.settings.IdleClose / 4
+	if every < 100*time.Millisecond {
+		every = 100 * time.Millisecond
+	}
+	t := time.NewTicker(every)
+	defer t.Stop()
+	for {
+		select {
+		case <-p.stop:
+			return
+		case <-t.C:
+			p.reapIdle(time.Now())
+		}
+	}
+}
+
+func (p *Pools) reapIdle(now time.Time) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for el := p.order.Back(); el != nil; {
+		prev := el.Prev()
+		e := el.Value.(*poolEntry)
+		if now.Sub(e.lastUsed) >= p.settings.IdleClose && e.pool.Stat().AcquiredConns() == 0 {
+			p.order.Remove(el)
+			delete(p.entries, e.tenantID)
+			go e.pool.Close()
+		}
+		el = prev
+	}
+}
+
 // Close releases every pool.
 func (p *Pools) Close() {
+	p.stopOnce.Do(func() { close(p.stop) })
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	for _, el := range p.entries {
@@ -221,8 +296,14 @@ func (p *Pools) Close() {
 }
 
 // connect opens a pool and verifies it answers.
-func connect(ctx context.Context, dsn string) (*pgxpool.Pool, error) {
-	pool, err := pgxpool.New(ctx, dsn)
+func connect(ctx context.Context, dsn string, settings PoolSettings) (*pgxpool.Pool, error) {
+	cfg, err := pgxpool.ParseConfig(dsn)
+	if err != nil {
+		// Never repeat the DSN: it carries the core role's password.
+		return nil, errors.New("tenancy: invalid DSN")
+	}
+	settings.apply(cfg)
+	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("tenancy: pgxpool: %w", err)
 	}

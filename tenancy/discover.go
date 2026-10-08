@@ -45,7 +45,7 @@ func enumerateTenants(ctx context.Context, template string, onlyConnectable bool
 		return nil, err
 	}
 
-	db, err := sql.Open("pgx", adminDSN)
+	db, err := sql.Open("pgx", withAppName(adminDSN))
 	if err != nil {
 		return nil, fmt.Errorf("tenancy: open admin connection: %w", err)
 	}
@@ -247,7 +247,7 @@ func notActivated(err error) string {
 // provisioner reserva a los módulos activados. Por eso el error de conexión se
 // clasifica con notActivated en vez de contarse como fallo.
 func hasSchema(ctx context.Context, dsn, schema string) (bool, error) {
-	db, err := sql.Open("pgx", dsn)
+	db, err := sql.Open("pgx", withAppName(dsn))
 	if err != nil {
 		return false, fmt.Errorf("tenancy: open for schema check: %w", err)
 	}
@@ -314,4 +314,24 @@ func adminAndPattern(template string) (string, namePattern, error) {
 func escapeLike(s string) string {
 	r := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
 	return r.Replace(s)
+}
+
+// withAppName stamps application_name on a DSN so the short discovery
+// connections are attributable in pg_stat_activity too. On any parse problem it
+// returns the DSN untouched and lets the connect report the error.
+func withAppName(dsn string) string {
+	name := AppNameFromEnv()
+	if name == "" {
+		return dsn
+	}
+	u, err := url.Parse(dsn)
+	if err != nil {
+		return dsn
+	}
+	q := u.Query()
+	if q.Get("application_name") == "" {
+		q.Set("application_name", name)
+		u.RawQuery = q.Encode()
+	}
+	return u.String()
 }
