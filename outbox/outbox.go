@@ -69,6 +69,9 @@ func (s *Store) Insert(ctx context.Context, tx pgx.Tx, tenantID, subject string,
 	if err := tx.QueryRow(ctx, q, tenantID, subject, payload).Scan(&eventID); err != nil {
 		return "", fmt.Errorf("outbox: insert: %w", err)
 	}
+	// Tells the Base that this transaction wrote an event, so that if it
+	// commits the relay is woken for the tenant instead of waiting its turn.
+	tenancy.MarkOutbox(tx)
 	return eventID, nil
 }
 
