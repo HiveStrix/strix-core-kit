@@ -26,7 +26,7 @@ func TestRequireRecordsTheDecisionOnTheSpan(t *testing.T) {
 		ended := rec.Ended()
 		out := map[string]string{}
 		for _, a := range ended[len(ended)-1].Attributes() {
-			out[string(a.Key)] = a.Value.Emit()
+			out[string(a.Key)] = a.Value.String()
 		}
 		return out
 	}

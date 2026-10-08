@@ -126,7 +126,7 @@ func recorder(t *testing.T) (*tracetest.SpanRecorder, *sdktrace.TracerProvider) 
 func attrs(s sdktrace.ReadOnlySpan) map[string]string {
 	out := map[string]string{}
 	for _, a := range s.Attributes() {
-		out[string(a.Key)] = a.Value.Emit()
+		out[string(a.Key)] = a.Value.String()
 	}
 	return out
 }
