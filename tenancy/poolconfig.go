@@ -2,6 +2,7 @@ package tenancy
 
 import (
 	"os"
+	"regexp"
 	"strconv"
 	"time"
 
@@ -78,12 +79,39 @@ func PoolSettingsFromEnv() PoolSettings {
 	return s
 }
 
-// AppNameFromEnv devuelve STRIX_APP_NAME o, si falta, NATS_SERVICE_NAME.
+// AppNameFromEnv devuelve el nombre con que las conexiones se identifican en
+// pg_stat_activity: STRIX_APP_NAME, luego NATS_SERVICE_NAME y, si ninguna está,
+// el nombre de la app derivado del hostname del pod (podAppName). Fuera de un
+// pod devuelve "" y no se fija application_name.
 func AppNameFromEnv() string {
 	if v := os.Getenv(EnvAppName); v != "" {
 		return v
 	}
-	return os.Getenv(envServiceName)
+	if v := os.Getenv(envServiceName); v != "" {
+		return v
+	}
+	host, _ := os.Hostname()
+	return podAppName(host)
+}
+
+var (
+	// strix-people-6d8f9c7b5-abcde: Deployment, hash del ReplicaSet y sufijo del pod.
+	deploymentPod = regexp.MustCompile(`^(.+)-[a-z0-9]{8,10}-[a-z0-9]{5}$`)
+	// postgres-0: StatefulSet.
+	statefulSetPod = regexp.MustCompile(`^(.+)-[0-9]+$`)
+)
+
+// podAppName deriva el nombre de la app del hostname de un pod, para que los
+// cores se distingan en pg_stat_activity sin que cada spec declare su nombre.
+// Un hostname que no tiene forma de pod (una máquina de desarrollo) da "".
+func podAppName(hostname string) string {
+	if m := deploymentPod.FindStringSubmatch(hostname); m != nil {
+		return m[1]
+	}
+	if m := statefulSetPod.FindStringSubmatch(hostname); m != nil {
+		return m[1]
+	}
+	return ""
 }
 
 func (s PoolSettings) apply(cfg *pgxpool.Config) {

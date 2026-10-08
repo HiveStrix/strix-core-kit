@@ -162,3 +162,18 @@ func TestPoolSettingsFromEnv(t *testing.T) {
 		t.Errorf("AppName = %q, want the NATS_SERVICE_NAME fallback", s.AppName)
 	}
 }
+
+func TestPodAppName(t *testing.T) {
+	cases := map[string]string{
+		"strix-people-6d8f9c7b5-abcde":     "strix-people",
+		"strix-hcm-rules-5f6c7d8b9c-x2k4m": "strix-hcm-rules",
+		"postgres-0":                       "postgres",
+		"DESKTOP-ABC123":                   "",
+		"laptop":                           "",
+	}
+	for host, want := range cases {
+		if got := podAppName(host); got != want {
+			t.Errorf("podAppName(%q) = %q, want %q", host, got, want)
+		}
+	}
+}
