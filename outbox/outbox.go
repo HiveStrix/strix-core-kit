@@ -90,7 +90,7 @@ func (s *Store) FetchUnpublishedWithMeta(ctx context.Context, tenantID string, l
 }
 
 func (s *Store) fetch(ctx context.Context, tenantID string, limit int, meta bool) ([]Row, error) {
-	pool, err := s.base.PoolFor(ctx, tenantID)
+	pool, err := s.base.PoolForBackground(ctx, tenantID)
 	if err != nil {
 		return nil, err
 	}
@@ -133,7 +133,7 @@ func (s *Store) fetch(ctx context.Context, tenantID string, limit int, meta bool
 
 // MarkPublished flags an event as delivered.
 func (s *Store) MarkPublished(ctx context.Context, tenantID string, id int64) error {
-	pool, err := s.base.PoolFor(ctx, tenantID)
+	pool, err := s.base.PoolForBackground(ctx, tenantID)
 	if err != nil {
 		return err
 	}
@@ -149,7 +149,7 @@ func (s *Store) MarkPublished(ctx context.Context, tenantID string, id int64) er
 // cannot be delivered is a problem to look at, not a row to discard: discarding
 // it is how a downstream figure silently stops being recalculated.
 func (s *Store) BumpAttempts(ctx context.Context, tenantID string, id int64) error {
-	pool, err := s.base.PoolFor(ctx, tenantID)
+	pool, err := s.base.PoolForBackground(ctx, tenantID)
 	if err != nil {
 		return err
 	}

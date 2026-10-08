@@ -71,6 +71,15 @@ func (b *Base) PoolFor(ctx context.Context, tenantID string) (*pgxpool.Pool, err
 	return b.pools.Get(ctx, tenantID)
 }
 
+// PoolForBackground is PoolFor for background sweeps: it does not count as use,
+// so it does not keep an idle tenant's pool open (see Pools.GetBackground).
+func (b *Base) PoolForBackground(ctx context.Context, tenantID string) (*pgxpool.Pool, error) {
+	if tenantID == "" {
+		return nil, ErrNoTenant
+	}
+	return b.pools.GetBackground(ctx, tenantID)
+}
+
 // InTx runs fn inside a transaction, rolling back on error or panic.
 //
 // Multi-table mutations WITHIN this schema go in a single transaction. Nothing
