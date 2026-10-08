@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"net/url"
 	"strings"
+	"sync"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -32,6 +33,9 @@ type Querier interface {
 // database, and in what transaction".
 type Base struct {
 	pools *Pools
+
+	mu       sync.RWMutex
+	onOutbox []func(tenantID string)
 }
 
 // NewBase builds a Base over a per-tenant pool registry.
@@ -90,7 +94,11 @@ func (b *Base) InTx(ctx context.Context, fn func(tx pgx.Tx, tenantID string) err
 	if err != nil {
 		return err
 	}
-	return runTx(ctx, pool, func(tx pgx.Tx) error { return fn(tx, tenantID) })
+	wrote, err := runTx(ctx, pool, func(tx pgx.Tx) error { return fn(tx, tenantID) })
+	if err == nil && wrote {
+		b.notifyOutbox(tenantID)
+	}
+	return err
 }
 
 // InTxFor runs fn in a transaction against an EXPLICIT tenant, for callers that
@@ -105,27 +113,35 @@ func (b *Base) InTxFor(ctx context.Context, tenantID string, fn func(tx pgx.Tx) 
 	if err != nil {
 		return err
 	}
-	return runTx(ctx, pool, fn)
+	wrote, err := runTx(ctx, pool, fn)
+	if err == nil && wrote {
+		b.notifyOutbox(tenantID)
+	}
+	return err
 }
 
-func runTx(ctx context.Context, pool *pgxpool.Pool, fn func(tx pgx.Tx) error) error {
+// runTx runs fn in a transaction and reports whether it committed having
+// written an outbox row (see MarkOutbox).
+func runTx(ctx context.Context, pool *pgxpool.Pool, fn func(tx pgx.Tx) error) (bool, error) {
 	tx, err := pool.Begin(ctx)
 	if err != nil {
-		return fmt.Errorf("tenancy: begin: %w", err)
+		return false, fmt.Errorf("tenancy: begin: %w", err)
 	}
 	defer func() {
 		// Rollback after a successful commit is a no-op, so this is safe on
 		// every path, including a panic unwinding through it.
 		_ = tx.Rollback(ctx)
+		outboxMarks.Delete(tx)
 	}()
 
 	if err := fn(tx); err != nil {
-		return err
+		return false, err
 	}
 	if err := tx.Commit(ctx); err != nil {
-		return fmt.Errorf("tenancy: commit: %w", err)
+		return false, fmt.Errorf("tenancy: commit: %w", err)
 	}
-	return nil
+	_, wrote := outboxMarks.Load(tx)
+	return wrote, nil
 }
 
 // Migrate applies a Core's embedded migrations idempotently against dsn.

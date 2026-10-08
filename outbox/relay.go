@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"os"
+	"sync"
 	"time"
 
 	"github.com/nats-io/nats.go"
@@ -57,8 +59,16 @@ type Config struct {
 	Discover func(ctx context.Context) ([]string, error)
 	// DiscoverEvery is how often Discover is asked again. Zero means 1 minute.
 	DiscoverEvery time.Duration
-	// Interval between sweeps. Zero means 2s.
+	// Interval between sweeps of a tenant that has events. Zero means 2s.
 	Interval time.Duration
+	// IdleInterval is the longest a tenant with no events waits between
+	// sweeps: every empty sweep doubles its wait, from Interval up to this.
+	// A commit that writes an event wakes its tenant at once, so a quiet
+	// tenant does not delay the first event after the quiet. Zero means the
+	// STRIX_RELAY_IDLE_INTERVAL environment variable, or 30s if unset. A value
+	// <= Interval, or a negative one, turns the backoff off and sweeps every
+	// tenant every Interval.
+	IdleInterval time.Duration
 	// Batch is how many events one tenant yields per sweep. Zero means 100.
 	Batch int
 	// TraceColumns says the outbox has the traceparent and causation columns
@@ -90,6 +100,11 @@ type Relay struct {
 	streamReady bool
 	warned      bool
 	disc        discovery
+
+	// sched and wakeCh are created by start, once, when Run begins.
+	startOnce sync.Once
+	sched     *sweepSchedule
+	wakeCh    chan struct{}
 }
 
 // streamAttemptTimeout bounds one attempt at creating the stream, so a broker
@@ -117,6 +132,9 @@ func Connect(ctx context.Context, natsURL string, store *Store, cfg Config) (*Re
 	}
 	if cfg.Batch == 0 {
 		cfg.Batch = 100
+	}
+	if cfg.IdleInterval == 0 {
+		cfg.IdleInterval = idleIntervalFromEnv()
 	}
 	var opts []natsconn.Option
 	if cfg.Service != "" {
@@ -171,8 +189,50 @@ func (r *Relay) warnOnce(ctx context.Context, reason string) {
 		"stream", r.cfg.StreamName, "reason", reason)
 }
 
-// Run polls until ctx is cancelled.
+// idleIntervalFromEnv reads STRIX_RELAY_IDLE_INTERVAL. A value <= 0 means "no
+// backoff". An unreadable or missing one means the default.
+func idleIntervalFromEnv() time.Duration {
+	v := os.Getenv("STRIX_RELAY_IDLE_INTERVAL")
+	if v == "" {
+		return defaultIdleInterval
+	}
+	d, err := time.ParseDuration(v)
+	if err != nil {
+		return defaultIdleInterval
+	}
+	return d
+}
+
+// start builds the sweep schedule and hooks the relay to the Base, so a commit
+// that wrote an outbox event wakes its tenant. It runs once, from Run.
+func (r *Relay) start() {
+	r.startOnce.Do(func() {
+		idle := r.cfg.IdleInterval
+		if idle == 0 {
+			idle = idleIntervalFromEnv()
+		}
+		r.sched = newSweepSchedule(r.cfg.Interval, idle)
+		r.wakeCh = make(chan struct{}, 1)
+		if r.store != nil && r.store.base != nil {
+			r.store.base.OnOutboxCommit(r.wake)
+		}
+	})
+}
+
+// wake is called, on the committing goroutine, after a transaction that wrote an
+// event commits. It only flags the tenant and signals; the sweep happens in Run.
+func (r *Relay) wake(tenantID string) {
+	r.sched.wake(tenantID)
+	select {
+	case r.wakeCh <- struct{}{}:
+	default: // a sweep is already pending: it will take this tenant too
+	}
+}
+
+// Run sweeps until ctx is cancelled: every Interval for the tenants that are
+// due, and at once for a tenant woken by a commit.
 func (r *Relay) Run(ctx context.Context) {
+	r.start()
 	ticker := time.NewTicker(r.cfg.Interval)
 	defer ticker.Stop()
 	for {
@@ -180,14 +240,40 @@ func (r *Relay) Run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			if !r.ensureStream(ctx) {
-				continue
-			}
-			for _, tenantID := range r.tenants(ctx) {
-				r.drain(ctx, tenantID)
-			}
+			r.sweep(ctx, false)
+		case <-r.wakeCh:
+			r.sweep(ctx, true)
 		}
 	}
+}
+
+// sweep drains the tenants that are due (all of them on a tick) or, when woken
+// is set, only the ones a commit just flagged.
+func (r *Relay) sweep(ctx context.Context, woken bool) {
+	if !r.ensureStream(ctx) {
+		return
+	}
+	flagged := r.sched.takeWoken()
+	if woken {
+		for tenantID := range flagged {
+			r.sweepTenant(ctx, tenantID)
+		}
+		return
+	}
+	tenants := r.tenants(ctx)
+	r.sched.prune(tenants)
+	now := time.Now()
+	for _, tenantID := range tenants {
+		_, wasWoken := flagged[tenantID]
+		if wasWoken || r.sched.due(tenantID, now) {
+			r.sweepTenant(ctx, tenantID)
+		}
+	}
+}
+
+func (r *Relay) sweepTenant(ctx context.Context, tenantID string) {
+	busy := r.drain(ctx, tenantID)
+	r.sched.done(tenantID, busy, time.Now())
 }
 
 // Close drains the NATS connection cleanly on SIGTERM, so in-flight publishes
@@ -198,11 +284,14 @@ func (r *Relay) Close() {
 	}
 }
 
-func (r *Relay) drain(ctx context.Context, tenantID string) {
+// drain publishes one tenant's pending events and reports whether the tenant is
+// busy: it had events, or something failed and must be retried at the base
+// cadence. Only an empty, clean sweep reports false and lets the wait grow.
+func (r *Relay) drain(ctx context.Context, tenantID string) bool {
 	rows, err := r.pending(ctx, tenantID)
 	if err != nil {
 		r.fetchFailed(ctx, tenantID, err)
-		return
+		return true
 	}
 	r.fetchOK(tenantID)
 	for _, row := range rows {
@@ -214,16 +303,17 @@ func (r *Relay) drain(ctx context.Context, tenantID string) {
 			// Stop at the first failure instead of skipping ahead. The events of
 			// one entity are a sequence, and delivering a later one first would
 			// leave a consumer holding the older figure.
-			return
+			return true
 		}
 		if err := r.store.MarkPublished(ctx, tenantID, row.ID); err != nil {
 			// The event went out but the mark did not stick, so it will be
 			// republished next tick. That is why consumers must be idempotent:
 			// this is the exact duplicate they are guarding against.
 			slog.ErrorContext(ctx, "relay: mark published failed, event will be redelivered", "event", row.EventID, "error", err)
-			return
+			return true
 		}
 	}
+	return len(rows) > 0
 }
 
 // pending is the next batch of one tenant, with traceparent and causation
