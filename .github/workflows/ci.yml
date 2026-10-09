@@ -8,11 +8,33 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    # Las pruebas de base (idempotency, outbox, tenancy) se saltean sin estas
+    # variables, así que sin servicios el CI daba verde sin probarlas nunca
+    # (auditoría AI ready del 2026-10-08).
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_PASSWORD: kit
+          POSTGRES_DB: kit_test
+        ports: ["55433:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 2s --health-timeout 5s --health-retries 30
+    env:
+      KIT_TEST_DSN: postgres://postgres:kit@127.0.0.1:55433/kit_test?sslmode=disable
+      OUTBOX_TEST_PG: postgres://postgres:kit@127.0.0.1:55433/postgres?sslmode=disable
+      TENANCY_TEST_PG: postgres://postgres:kit@127.0.0.1:55433/postgres?sslmode=disable
+      OUTBOX_TEST_NATS: nats://127.0.0.1:14222
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+      # NATS con JetStream: un service no acepta argumentos (-js), va por docker run.
+      - name: nats
+        run: |
+          docker run -d --name nats -p 14222:4222 nats:2.12-alpine -js
+          for i in $(seq 1 30); do nc -z 127.0.0.1 14222 && break; sleep 1; done
       - run: go build ./...
       - run: go vet ./...
       - run: go test -race ./...
