@@ -7,8 +7,8 @@ por repo.
 
 ## Por qué existe
 
-Cuatro Cores —`strix-expenses`, `strix-costing`, `strix-clients` y `core-tasks`—
-llevaban cada uno su copia de `auth` y `pdp`, en dos generaciones. El riesgo no
+Cuatro Cores —`strix-expenses`, `strix-costing`, `strix-clients` y `core-tasks`
+(dado de baja el 2026-08-25)— llevaban cada uno su copia de `auth` y `pdp`, en dos generaciones. El riesgo no
 era la repetición sino la divergencia silenciosa: ambas copias compilan, ambas
 pasan sus pruebas, y la que se queda atrás sigue aceptando lo que la otra ya
 rechaza sin que nada lo señale.
@@ -37,8 +37,8 @@ El detalle completo está en
 | `natsconn` | Desde v0.21.0 (propuesta §2.4, condición 1D), cómo se conecta un core a NATS: `natsconn.Connect(url, natsconn.WithService("core-billing"))` toma la credencial del entorno, exactamente una de `NATS_CREDS_FILE`, `NATS_NKEY_SEED_FILE` o `NATS_USER`+`NATS_PASSWORD` (ninguna = anónimo, el usuario `legacy` de la migración; más de una = error), le da a la conexión su propio inbox `_INBOX.<servicio>` (o el de `NATS_SERVICE_NAME`) y reintenta como el relay. `outbox.Dial`/`Connect` ya pasan por acá, así que un core migra a su usuario de NATS solo con configuración; `outbox.Config.Service` y `outbox.DialWith` fijan el servicio en código |
 | `blob` | Desde v0.21.0 (propuesta §4.4), el almacén de bytes de los adjuntos, con la misma interfaz `Store` (`Put`/`Get`/`Delete`) que las copias de strix-maintenance y strix-expenses: `S3Store` (`NewS3(S3Config{...})`, minio-go, MinIO/S3/RustFS) para producción con `PresignGet`/`PresignPut` (interfaz `Presigner`, como mucho `MaxPresignTTL` = 1 h, firmadas para `PublicEndpoint` si el navegador llega por otro nombre), `DiskStore` (mismo layout de archivo + `.ct` que las copias, solo dev) y `MemStore` (fake para pruebas, con las mismas reglas). Toda clave es `<tenant>/<...>` y **todas** las implementaciones rechazan (`ErrInvalidKey`) la que no empieza con el tenant de `tenantctx`, además de rutas absolutas, `..`, segmentos vacíos y barras invertidas; en S3 el objeto es `<core>/<clave>`, el prefijo sobre el que se escribe la política de la credencial del core. `ErrNotFound` es `fs.ErrNotExist`. Fijar `Region` para que firmar no consulte al almacén |
 | `tenantctx` | El tenant y el subject verificados, a través del contexto |
-| `tenancy` | Un pool por tenant (LRU, apertura perezosa), resolución de DSN por plantilla, `Base` para repositorios (Conn/InTx/InTxFor), migraciones goose y descubrimiento de tenants por Postgres |
-| `outbox` | El outbox transaccional (`outbox`, `processed_events`) y el relay que lo drena a JetStream. Desde v0.15.0 el relay tolera un broker caído o sin DNS al arrancar: `Connect` ya no falla por eso y el stream se crea en cuanto NATS responde. Desde v0.16.0, también el lado del consumidor: `Dial` conecta como el relay (el primer dial reintenta) y `Subscribe(ctx, js, Subscription)` engancha un durable al stream de otro core y no se rinde nunca — broker caído, stream que todavía no existe o durable que no se pudo crear son el mismo "todavía no", y reintenta (5 s doblando hasta `MaxRetry`, 5 min por defecto) hasta engancharse. El ack, el nak con espera y la idempotencia (`MarkProcessed`) siguen siendo del core. Desde v0.20.0 el relay descubre los tenants: con `Config.Discover = outbox.ActiveTenants(template, schema)` barre solo los tenants con el módulo activado (`tenancy.TenantsWithSchema`: una consulta que descarta las bases sin CONNECT sin abrirlas), refrescados cada `DiscoverEvery` (1 min); un tenant nuevo entra sin reiniciar el pod y sin tocar el spec, y `ExtraTenants` (`CORE_<X>_RELAY_TENANTS`) queda solo como respaldo si el descubrimiento nunca respondió Desde v0.21.0, el sobre suma `traceparent` y `causation` (`{event_id, principal_type, principal_id, chain}`), opcionales y compatibles: sin ellos el sobre es byte a byte el de antes. La tabla `outbox` es de cada core, así que el kit trae la migración (`outbox.TraceColumnsMigration`, goose, columnas nullable) y el core, una vez aplicada en todos los tenants, escribe con `InsertWith(..., Meta{Traceparent, Causation})` y enciende `Config.TraceColumns` en el relay (sin él, el relay lee lo de siempre; con él y sin columnas, falla en voz alta). El consumidor usa `ParseEnvelope` y `ContextWithEnvelope`; `NextCausation` arma la causa de lo que emite un handler y **se niega** (`ErrCausationCycle`, `ErrCausationTooDeep`, 8 saltos por defecto) cuando el principal ya está en la cadena: el corte del bucle de un agente que reacciona a lo que él mismo causó |
+| `tenancy` | Un pool por tenant (LRU, apertura perezosa), resolución de DSN por plantilla, `Base` para repositorios (Conn/InTx/InTxFor), migraciones goose y descubrimiento de tenants por Postgres. Desde v0.22.0 cada pool tiene techo y se suelta solo (`PoolSettings`, por entorno `STRIX_DB_POOL_MAX_CONNS`, `_MIN_CONNS`, `_MAX_IDLE`, `_MAX_LIFETIME`, `_HEALTH_PERIOD`, `_IDLE_CLOSE`; por defecto 3 conexiones, 2 min ociosa, y el pool entero de un tenant sin tráfico se cierra a los 10 min) y `PoolForBackground`/`Pools.GetBackground` resuelven un pool sin contarlo como uso, para barridos que no deben mantener vivo a un tenant ocioso. Desde v0.22.1 `application_name` sale de `STRIX_APP_NAME`, si no de `NATS_SERVICE_NAME`, si no del hostname del pod, para ver en `pg_stat_activity` quién tiene cada conexión. Desde v0.23.0 `Base.OnOutboxCommit` avisa, después del commit, el tenant de toda transacción que escribió en el outbox (lo usa el relay) |
+| `outbox` | El outbox transaccional (`outbox`, `processed_events`) y el relay que lo drena a JetStream. Desde v0.15.0 el relay tolera un broker caído o sin DNS al arrancar: `Connect` ya no falla por eso y el stream se crea en cuanto NATS responde. Desde v0.16.0, también el lado del consumidor: `Dial` conecta como el relay (el primer dial reintenta) y `Subscribe(ctx, js, Subscription)` engancha un durable al stream de otro core y no se rinde nunca — broker caído, stream que todavía no existe o durable que no se pudo crear son el mismo "todavía no", y reintenta (5 s doblando hasta `MaxRetry`, 5 min por defecto) hasta engancharse. El ack, el nak con espera y la idempotencia (`MarkProcessed`) siguen siendo del core. Desde v0.20.0 el relay descubre los tenants: con `Config.Discover = outbox.ActiveTenants(template, schema)` barre solo los tenants con el módulo activado (`tenancy.TenantsWithSchema`: una consulta que descarta las bases sin CONNECT sin abrirlas), refrescados cada `DiscoverEvery` (1 min); un tenant nuevo entra sin reiniciar el pod y sin tocar el spec, y `ExtraTenants` (`CORE_<X>_RELAY_TENANTS`) queda solo como respaldo si el descubrimiento nunca respondió. Desde v0.23.0 el barrido es **adaptativo**: un tenant con eventos se barre cada `Interval`, cada barrido vacío duplica su espera hasta `IdleInterval` (30 s, o `STRIX_RELAY_IDLE_INTERVAL`), y un commit que escribió un evento (`Insert` marca la transacción, `Base.InTx`/`InTxFor` avisa) lo despierta al instante; entre dos barridos de un tenant quieto no queda ninguna conexión suya en uso, que es lo que deja a PgBouncer y al cierre por inactividad del pool devolverla. Desde v0.21.0, el sobre suma `traceparent` y `causation` (`{event_id, principal_type, principal_id, chain}`), opcionales y compatibles: sin ellos el sobre es byte a byte el de antes. La tabla `outbox` es de cada core, así que el kit trae la migración (`outbox.TraceColumnsMigration`, goose, columnas nullable) y el core, una vez aplicada en todos los tenants, escribe con `InsertWith(..., Meta{Traceparent, Causation})` y enciende `Config.TraceColumns` en el relay (sin él, el relay lee lo de siempre; con él y sin columnas, falla en voz alta). El consumidor usa `ParseEnvelope` y `ContextWithEnvelope`; `NextCausation` arma la causa de lo que emite un handler y **se niega** (`ErrCausationCycle`, `ErrCausationTooDeep`, 8 saltos por defecto) cuando el principal ya está en la cadena: el corte del bucle de un agente que reacciona a lo que él mismo causó |
 | `divisions` | Cliente de plataforma para el árbol organizacional (`ValidateRefs` batch, `Subtree`, `Path`) y, desde v0.10.0, para los catálogos de plataforma por el mismo `Dial`: `CostCenters()` y `AssetTypes()` (interfaz `Catalogs`), cada uno con su caché por tenant y stub fail-closed. Desde v0.14.0, `Client` expone `Ancestors` (ids raíz..nodo) y `CostCentersClient` `Anchor` (el `division_id` del centro de costo) y el paquete agrega `CheckCoherence(ctx, cats, divisionID, costCenterID)` — función libre, no método de la interfaz — para validar división↔centro de costo (coherente sii el ancla de C es D o un ancestro de D). Cómo lo adopta un core: `Hivestrix-gitops/docs/catalogs-adoption-guide.md` |
 | `parties` | Cliente de plataforma para terceros (`core-clients`): `LookupSuppliers` batch, con el token del caller y SIN caché — `active` e `issues_receipt` deben ser frescos al escribir una compra. `Dial(addr, WithServiceTokens(ts))` para las llamadas sin usuario; ídem en `divisions` |
 | `hcmrules` | Desde v0.17.0, el evaluador del motor de reglas HCM (ADR `Hivestrix-gitops/docs/decisions/hcm-cores.md` §2), funciones puras sin I/O: `EvalFormula`/`CheckEligibility` resuelven un `kind` registrado (nunca un DSL), `EvalBracket`, `ResolveCalendar` y `DecodeValues`, que convierte los coeficientes JSON de `GetRuleset` a decimales exactos sin pasar por float. Los datos viven en `core-hcmrules`; el consumidor pide la foto una vez y evalúa local. Vino de `strix-hcm-rules/pkg/rules` al llegar su segundo consumidor (`core-leave`), y agrega los kinds `vacation_proportional` y `vacation_period_vesting`. Desde v0.18.0, para `core-payroll`: `cesantia_cr_art29` (CT art. 29 como lo aplica el MTSS: la tasa de la fila de los años **completos** × los años contados —la fracción suma un año pero no sube de fila— con tope, y días fijos bajo el año; los bordes de 6 y 12 meses son coeficientes, no código), `fixed_term_indemnity_cr` (art. 31: un día por cada 7 trabajados o fracción, con mínimos de 3 y 22), `absence_employer_share` (la parte patronal de un día de ausencia subsidiada por bandas, p. ej. enfermedad CCSS 50 % días 1-3), el coeficiente opcional `band<i>_exclusive` en `preaviso_cr` (art. 28 dice «exceda de» seis meses y «después de» un año; sin el flag sigue `>=`, así que las filas sembradas no cambian; `band_count` negativo o fraccionario pasa a ser error) y `EvalBracketIncremental(tiers, antes, después)` para el ISR acumulado del mes. Todo conteo de bandas o filas (`band_count`, `row_count`, `sub_year_band_count`) tiene que ser un entero en [mínimo, 100], comprobado sobre el decimal antes de convertirlo: `core-hcmrules` evalúa en su preview los coeficientes que manda el llamante, y un conteo enorme no puede dimensionar una reserva de memoria. `cesantia_cr` queda registrado solo para que sus filas sigan evaluando hasta cerrarse: su forma acumulativa no es la del art. 29 |
@@ -138,7 +138,7 @@ servicio compartido (por ejemplo `ingest.v1.ImportService`) suma ese paquete
 con otro `--package`:
 
 ```
-go run github.com/hs-javierviquez/strix-core-kit/cmd/capcheck@v0.21.0 \
+go run github.com/hs-javierviquez/strix-core-kit/cmd/capcheck@v0.23.0 \
     --catalog capabilities/catalog.yaml --proto proto \
     --package billing.v1 --module billing
 ```
@@ -148,6 +148,55 @@ a los servicios de esos paquetes: las copias sincronizadas de contratos ajenos
 que un core guarda bajo `proto/` no son suyas para catalogar. Los protos se
 parsean sin compilar (no hace falta buf ni googleapis). Salida 0 limpio, 1
 problemas del catálogo (todos impresos), 2 uso o E/S.
+
+## Cómo lo adoptaron los cores (v0.23.0, 2026-10-11)
+
+Los 13 cores en producción (billing, clients, costing, divisions, expenses,
+hcm-rules, inbox, inventory, leave, maintenance, payroll, people y time) están
+en **v0.23.0**. Un core nuevo copia este cableado:
+
+- **Catálogo y gate.** Un paquete `capabilities` propio embebe
+  `capabilities/catalog.yaml` (`//go:embed` + `capabilities.MustParse`) y el gate
+  se construye con `authz.Effects(cat.Effects())`. El CI corre
+  `capcheck@v0.23.0` con los `--package` del core (incluido `shell.v1`, el
+  `WidgetService`). Toda entrada `read` es de verdad de solo lectura: el
+  asistente la llama libremente. La prueba que lo sostiene (strix-leave y
+  strix-time, `internal/handlers/reads_integration_test.go`) abre un pool con
+  `options=-cdefault_transaction_read_only=on`, corre cada entrada `read` por su
+  handler real y cruza la tabla con el catálogo para que una entrada nueva sin
+  prueba haga fallar el test.
+- **Idempotencia**, cuatro piezas:
+  1. el interceptor, `idempotency.New(base, cat.MethodEffects()).Unary()`,
+     después del de `auth`;
+  2. la migración: `idempotency.Migration` copiada como migración goose del
+     core, con un test que falla si la copia diverge de la del kit. **Antes,
+     `grep -rn idempotency_keys migrations/`**: el SQL del kit no califica la
+     tabla, así que si el core ya tiene una `idempotency_keys` propia la
+     migración no crea nada en silencio y toda escritura con clave termina en
+     `Unavailable`. strix-inventory renombró la suya (llaves de dominio) a
+     `operation_idempotency_keys` (`migrations/00028_idempotency_del_kit.sql`);
+     strix-maintenance conserva su interceptor propio del modo campo
+     (`internal/grpcmw/idempotency.go`, `migrations/00034_idempotency_keys.sql`)
+     y no usa el del kit;
+  3. el barrido: `Cleanup(ctx, tenant)` cada hora sobre `Pools().KnownTenants()`,
+     resolviendo con `PoolForBackground` (strix-billing
+     `cmd/api/idempotency_sweep.go`);
+  4. la cabecera: grpc-gateway no reenvía `Idempotency-Key` (no es cabecera
+     permanente de IANA). El `runtime.WithMetadata` del gateway del core la
+     copia a `idempotency.MetadataKey` (strix-billing `internal/server/server.go`).
+     El BFF del Shell solo la deja pasar.
+
+  Un llamador M2M que escribe manda la clave en la metadata: una
+  `idempotency_key` de dominio en el cuerpo no la reemplaza.
+- **NATS.** `outbox.Dial`/`Connect` pasan por `natsconn`; el spec declara
+  `NATS_SERVICE_NAME` en `config` y `NATS_USER` y `NATS_PASSWORD` en `secrets`
+  (los dos, para que lleguen juntos al pod). Desde el 2026-10-11 cada core
+  conecta con su usuario, cuyos permisos salen de su `events/catalog.yaml`
+  (Hivestrix-gitops, `docs/ai-ready-infra-runbook.md` §5).
+- **Pools y relay.** Los defaults de v0.22.0/v0.23.0 sin configuración extra:
+  techo de 3 conexiones por tenant, cierre de pools ociosos y relay adaptativo.
+- **Todavía sin adoptar** (existen desde v0.21.0): `telemetry`, `ratelimit` y
+  `blob`. Ningún core en producción los cablea al 2026-10-11.
 
 ## Los protos
 
@@ -173,8 +222,10 @@ make check-proto   # verifica la copia contra strix-auth (necesita gh)
 ```
 
 Las pruebas de base de datos (`outbox`, `idempotency`) corren contra un
-Postgres real cuando `KIT_TEST_DSN` está definida; con ella definida no pueden
-quedar en SKIP. Cada prueba crea y borra su propio schema:
+Postgres real cuando `KIT_TEST_DSN` está definida (las de pools de `tenancy`,
+con `TENANCY_TEST_PG`), y las del relay contra un JetStream real con
+`OUTBOX_TEST_NATS`; con ellas definidas no pueden quedar en SKIP. El CI (`.github/workflows/ci.yml`, en cada push y pull request) levanta
+los dos y las corre. Cada prueba crea y borra su propio schema:
 
 ```
 createdb kit_test_aiready
