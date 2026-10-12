@@ -56,8 +56,10 @@ CREATE INDEX IF NOT EXISTS idempotency_keys_created_at_idx ON idempotency_keys (
 DROP TABLE IF EXISTS idempotency_keys;
 `
 
-// MetadataKey is the gRPC metadata the key travels in (the Shell's BFF maps
-// the HTTP Idempotency-Key header onto it).
+// MetadataKey is the gRPC metadata the key travels in. The Shell's BFF only
+// forwards the HTTP Idempotency-Key header; grpc-gateway does not pass it on by
+// default (it is not a permanent IANA header), so each Core's gateway copies it
+// onto this key in its runtime.WithMetadata.
 const MetadataKey = "idempotency-key"
 
 const (
