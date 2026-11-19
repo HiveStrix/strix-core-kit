@@ -18,7 +18,8 @@ SYNCED := \
 	repos/HiveStrix/strix-divisions/contents/proto/divisions/v1/divisions.proto=proto/divisions/v1/divisions.proto \
 	repos/HiveStrix/strix-divisions/contents/proto/divisions/v1/cost_centers.proto=proto/divisions/v1/cost_centers.proto \
 	repos/HiveStrix/strix-divisions/contents/proto/divisions/v1/asset_types.proto=proto/divisions/v1/asset_types.proto \
-	repos/HiveStrix/strix-clients/contents/proto/clients/v1/clients.proto=proto/clients/v1/clients.proto
+	repos/HiveStrix/strix-clients/contents/proto/clients/v1/clients.proto=proto/clients/v1/clients.proto \
+	repos/HiveStrix/strix-brand/contents/proto/brand/v1/brand.proto=proto/brand/v1/brand.proto
 
 # El CONTRATO empieza en `syntax = `: lo anterior es prosa de cada repo (la
 # cabecera local explica por qué la copia existe; la del original, sus

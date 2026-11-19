@@ -1,0 +1,307 @@
+// COPIA SINCRONIZADA. El original vive en strix-brand
+// (proto/brand/v1/brand.proto) y es su dueño: core-brand es quien implementa
+// estos servicios. Aquí está para que el cliente de plataforma del kit
+// (paquete brand) comparta un único stub del contrato.
+//
+// Debe ser idéntico al original salvo la línea go_package. Para
+// resincronizarlo: `make sync-proto`, y después `buf generate`. El guardián
+// vive en el CI de strix-brand (repo privado que puede leer esta copia
+// pública), igual que strix-divisions vigila las suyas.
+
+syntax = "proto3";
+
+package brand.v1;
+
+import "google/api/annotations.proto";
+import "google/api/httpbody.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/hs-javierviquez/strix-core-kit/gen/brand/v1;brandv1";
+
+// BrandService: el perfil de la empresa y su marca.
+service BrandService {
+  // LA lectura: todo lo que un documento necesita, en una respuesta, SIN el
+  // byte de los logos (que se pide aparte y se revalida por sha256).
+  //
+  // Sin acción ante el PDP para personas y servicios: basta un token válido
+  // del tenant. Un técnico con rol sólo en Mantenimiento tiene que poder
+  // imprimir una boleta con el logo. Un token del asistente (`via`) sí pasa
+  // por el gate, con `brand.read`.
+  rpc GetBrand(GetBrandRequest) returns (Brand) {
+    option (google.api.http) = {get: "/v1/brand"};
+  }
+  // El byte de un logo, tal como quedó guardado (ya normalizado). NotFound si
+  // esa variante no se subió.
+  rpc GetLogo(GetLogoRequest) returns (google.api.HttpBody) {
+    option (google.api.http) = {get: "/v1/brand/logos/{variant}"};
+  }
+  // Escribe el perfil ENTERO. Lo vacío quiere decir «no lo dijo».
+  rpc UpdateProfile(UpdateProfileRequest) returns (Brand) {
+    option (google.api.http) = {
+      put: "/v1/brand/profile"
+      body: "*"
+    };
+  }
+  // Sube el logo de una variante: PNG o JPEG de hasta 500 KB. El servidor lo
+  // decodifica de verdad, lo achica sin deformarlo y lo vuelve a codificar.
+  rpc SetLogo(SetLogoRequest) returns (Brand) {
+    option (google.api.http) = {
+      put: "/v1/brand/logos/{variant}"
+      body: "*"
+    };
+  }
+  rpc DeleteLogo(DeleteLogoRequest) returns (Brand) {
+    option (google.api.http) = {delete: "/v1/brand/logos/{variant}"};
+  }
+  // Escribe la paleta ENTERA: los roles que no viajan se borran.
+  rpc SetPalette(SetPaletteRequest) returns (Brand) {
+    option (google.api.http) = {
+      put: "/v1/brand/palette"
+      body: "*"
+    };
+  }
+  // La tipografía, de la lista cerrada de ListFonts. Vacío = la de siempre.
+  rpc SetTypography(SetTypographyRequest) returns (Brand) {
+    option (google.api.http) = {
+      put: "/v1/brand/typography"
+      body: "*"
+    };
+  }
+  // Las fuentes que se pueden elegir. Lista cerrada: cada una es una que un
+  // generador de PDF tiene embebida y la web puede cargar.
+  rpc ListFonts(ListFontsRequest) returns (ListFontsResponse) {
+    option (google.api.http) = {get: "/v1/brand/fonts"};
+  }
+}
+
+// PhotosService: la galería de fotos de la empresa.
+//
+// El byte vive en el almacén de objetos (strix-core-kit/blob), con la clave
+// `<tenant>/photo/<id>/<sha256>`. Si el core arranca SIN almacén configurado,
+// toda RPC de este servicio contesta FailedPrecondition y GetBrand lo avisa
+// con `photos_enabled = false`, para que la pantalla no dibuje la pestaña.
+service PhotosService {
+  rpc ListPhotos(ListPhotosRequest) returns (ListPhotosResponse) {
+    option (google.api.http) = {get: "/v1/photos"};
+  }
+  // Sube una foto: JPEG, PNG o WebP de hasta 8 MB.
+  rpc UploadPhoto(UploadPhotoRequest) returns (Photo) {
+    option (google.api.http) = {
+      post: "/v1/photos"
+      body: "*"
+    };
+  }
+  // Cambia el pie, el texto alternativo y las etiquetas. No el byte.
+  rpc UpdatePhoto(UpdatePhotoRequest) returns (Photo) {
+    option (google.api.http) = {
+      put: "/v1/photos/{id}"
+      body: "*"
+    };
+  }
+  rpc DeletePhoto(DeletePhotoRequest) returns (DeletePhotoResponse) {
+    option (google.api.http) = {delete: "/v1/photos/{id}"};
+  }
+  // El orden de la galería: los ids en el orden en que deben quedar.
+  rpc ReorderPhotos(ReorderPhotosRequest) returns (ListPhotosResponse) {
+    option (google.api.http) = {
+      post: "/v1/photos:reorder"
+      body: "*"
+    };
+  }
+  // El byte de una foto.
+  rpc GetPhotoContent(GetPhotoContentRequest) returns (google.api.HttpBody) {
+    option (google.api.http) = {get: "/v1/photos/{id}/content"};
+  }
+}
+
+// --- La marca -----------------------------------------------------------------
+
+message Brand {
+  // Falso: la empresa no cargó NADA (ni perfil, ni logo, ni color). Todo lo de
+  // abajo viene vacío y el consumidor usa su valor por omisión.
+  bool configured = 1;
+  // Sube en cada escritura de perfil, logo, paleta o tipografía. Sirve de
+  // ETag: si no cambió, nada cambió.
+  int64 version = 2;
+  CompanyProfile profile = 3;
+  repeated BrandColor colors = 4;
+  // Sin el byte. Uno por variante subida.
+  repeated LogoRef logos = 5;
+  Typography typography = 6;
+  google.protobuf.Timestamp updated_at = 7;
+  // Si este despliegue tiene almacén de objetos y por lo tanto galería.
+  bool photos_enabled = 8;
+}
+
+message CompanyProfile {
+  // Cómo se presenta la empresa: el rótulo. Es lo que va en un encabezado.
+  string trade_name = 1;
+  // La razón social, si es distinta. Vacío = la misma que trade_name.
+  string legal_name = 2;
+  LegalIdType legal_id_type = 3;
+  string legal_id = 4;
+  // El lema, una línea.
+  string tagline = 5;
+  string phone = 6;
+  string email = 7;
+  string website = 8;
+  // Una línea, texto libre.
+  string address = 9;
+}
+
+enum LegalIdType {
+  LEGAL_ID_TYPE_UNSPECIFIED = 0;
+  LEGAL_ID_TYPE_FISICA = 1;
+  LEGAL_ID_TYPE_JURIDICA = 2;
+  LEGAL_ID_TYPE_DIMEX = 3;
+  LEGAL_ID_TYPE_NITE = 4;
+  LEGAL_ID_TYPE_OTRO = 5;
+}
+
+enum ColorRole {
+  COLOR_ROLE_UNSPECIFIED = 0;
+  // El color de la marca. Es el que usa un documento como acento.
+  COLOR_ROLE_PRIMARY = 1;
+  COLOR_ROLE_SECONDARY = 2;
+  COLOR_ROLE_ACCENT = 3;
+}
+
+message BrandColor {
+  ColorRole role = 1;
+  // «#RRGGBB», en mayúscula.
+  string hex = 2;
+  // DERIVADOS, sólo de salida. La tinta que mejor se lee encima del color
+  // («#FFFFFF» o «#1A1A1A») y las razones de contraste de WCAG (1 a 21).
+  string on_color = 3;
+  double contrast_on_white = 4;
+  double contrast_on_dark = 5;
+}
+
+enum LogoVariant {
+  LOGO_VARIANT_UNSPECIFIED = 0;
+  // El logo de siempre, para fondo claro. Es el que usa un documento.
+  LOGO_VARIANT_PRIMARY = 1;
+  // Para fondo oscuro.
+  LOGO_VARIANT_ON_DARK = 2;
+  // A una tinta.
+  LOGO_VARIANT_MONO = 3;
+  // El isotipo, cuadrado: para un avatar o un ícono.
+  LOGO_VARIANT_ICON = 4;
+}
+
+message LogoRef {
+  LogoVariant variant = 1;
+  string content_type = 2; // image/png | image/jpeg
+  int32 width_px = 3;
+  int32 height_px = 4;
+  int32 byte_size = 5;
+  // Hex. Cambia si y sólo si cambia el byte: es la clave de caché del logo.
+  string sha256 = 6;
+  google.protobuf.Timestamp updated_at = 7;
+}
+
+message Typography {
+  // Claves de ListFonts. Vacío = la tipografía de siempre de cada documento.
+  string heading_font = 1;
+  string body_font = 2;
+}
+
+message Font {
+  string key = 1; // «outfit»
+  string name = 2; // «Outfit»
+  // SANS | SERIF | MONO
+  string category = 3;
+}
+
+message GetBrandRequest {}
+
+message GetLogoRequest {
+  LogoVariant variant = 1;
+}
+
+message UpdateProfileRequest {
+  CompanyProfile profile = 1;
+}
+
+message SetLogoRequest {
+  LogoVariant variant = 1;
+  // El archivo tal como lo eligió la persona (base64 en JSON).
+  bytes data = 2;
+}
+
+message DeleteLogoRequest {
+  LogoVariant variant = 1;
+}
+
+message SetPaletteRequest {
+  // A lo sumo uno por rol. Sólo se leen `role` y `hex`.
+  repeated BrandColor colors = 1;
+}
+
+message SetTypographyRequest {
+  Typography typography = 1;
+}
+
+message ListFontsRequest {}
+
+message ListFontsResponse {
+  repeated Font fonts = 1;
+}
+
+// --- Las fotos ----------------------------------------------------------------
+
+message Photo {
+  string id = 1; // UUID
+  string content_type = 2;
+  // Cadena en JSON (int64 de grpc-gateway): no asumir número en el borde REST.
+  int64 byte_size = 3;
+  int32 width_px = 4;
+  int32 height_px = 5;
+  string sha256 = 6;
+  // El pie: lo que se lee debajo.
+  string caption = 7;
+  // Qué se ve, para quien no la ve.
+  string alt_text = 8;
+  // «fachada», «equipo», «taller». En minúscula, sin repetir.
+  repeated string tags = 9;
+  int32 sort_order = 10;
+  string uploaded_by = 11;
+  google.protobuf.Timestamp created_at = 12;
+}
+
+message ListPhotosRequest {
+  // Vacío = todas. Si no, sólo las que llevan esa etiqueta.
+  string tag = 1;
+}
+
+message ListPhotosResponse {
+  repeated Photo photos = 1;
+}
+
+message UploadPhotoRequest {
+  bytes data = 1;
+  string caption = 2;
+  string alt_text = 3;
+  repeated string tags = 4;
+}
+
+message UpdatePhotoRequest {
+  string id = 1;
+  string caption = 2;
+  string alt_text = 3;
+  repeated string tags = 4;
+}
+
+message DeletePhotoRequest {
+  string id = 1;
+}
+
+message DeletePhotoResponse {}
+
+message ReorderPhotosRequest {
+  repeated string ids = 1;
+}
+
+message GetPhotoContentRequest {
+  string id = 1;
+}
