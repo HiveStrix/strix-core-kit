@@ -56,6 +56,15 @@ type Subscription struct {
 	Stream string
 	// Consumer is created or updated on every bind, so a change to it (a new
 	// BackOff, a longer AckWait) reaches the broker on the next deploy.
+	//
+	// Where a durable starts is decided when it is born and never again:
+	// the broker refuses an update that changes DeliverPolicy, OptStartSeq or
+	// OptStartTime ("deliver policy can not be updated"), the bind fails on
+	// every retry and the Core stays deaf to the stream. So leave them alone
+	// on a durable that already exists; a new one that must not see what the
+	// stream holds is born with DeliverNewPolicy, and never with a start time
+	// computed at startup, which differs on the next start. Left unset, a new
+	// durable reads the whole stream, which is its retention (Config.MaxAge).
 	Consumer jetstream.ConsumerConfig
 	// Handle receives every message. Acking, nak-with-delay and idempotency
 	// (MarkProcessed) stay with the Core: they are domain decisions.

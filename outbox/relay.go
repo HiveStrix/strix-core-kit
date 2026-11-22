@@ -80,7 +80,31 @@ type Config struct {
 	// connection's name and its own reply inbox, _INBOX.<Service>. Empty
 	// falls back to NATS_SERVICE_NAME.
 	Service string
+	// MaxAge is how long the stream keeps an event. The broker deletes older
+	// ones whether or not every consumer has read them; the outbox row stays,
+	// so an event that aged out can still be published again from there. Zero
+	// means the STRIX_STREAM_MAX_AGE environment variable, or
+	// DefaultStreamMaxAge (30 days) if unset or unreadable. Negative keeps
+	// events forever, which is what every stream did before v0.24.0. A positive
+	// value under MinStreamMaxAge is raised to it.
+	//
+	// It is sent on every start (CreateOrUpdateStream), so it reaches a stream
+	// that already exists, and the broker drops what is already older at once.
+	MaxAge time.Duration
 }
+
+const (
+	// DefaultStreamMaxAge is the retention of a Core's stream when neither
+	// Config.MaxAge nor STRIX_STREAM_MAX_AGE says otherwise. Without one a
+	// stream grows forever, and every stream shares the broker's storage: when
+	// that fills, the broker refuses every publish of every Core.
+	DefaultStreamMaxAge = 30 * 24 * time.Hour
+	// MinStreamMaxAge is the shortest retention a stream accepts. An event that
+	// waits for its redelivery is deleted like any other once it ages out, and
+	// the consumer never hears of it again; the longest ladder a Core runs is
+	// about eight and a half hours.
+	MinStreamMaxAge = 24 * time.Hour
+)
 
 // Relay polls each tenant's outbox and publishes pending events to JetStream,
 // then marks them published.
@@ -163,19 +187,50 @@ func (r *Relay) ensureStream(ctx context.Context) bool {
 	}
 	attempt, cancel := context.WithTimeout(ctx, streamAttemptTimeout)
 	defer cancel()
-	if _, err := r.js.CreateOrUpdateStream(attempt, jetstream.StreamConfig{
-		Name:      r.cfg.StreamName,
-		Subjects:  []string{r.cfg.SubjectPrefix},
-		Retention: jetstream.LimitsPolicy,
-	}); err != nil {
+	sc := streamConfig(r.cfg)
+	if _, err := r.js.CreateOrUpdateStream(attempt, sc); err != nil {
 		r.warnOnce(ctx, err.Error())
 		return false
 	}
-	if r.warned {
-		slog.InfoContext(ctx, "relay: broker reachable, stream ready", "stream", r.cfg.StreamName)
-	}
+	// Always logged, once per start: it is how a deploy shows the retention
+	// the stream was left with (0s = events are kept forever).
+	slog.InfoContext(ctx, "relay: broker reachable, stream ready", "stream", r.cfg.StreamName, "max_age", sc.MaxAge.String())
 	r.streamReady = true
 	return true
+}
+
+// streamConfig is the Core's stream as the relay declares it on every start.
+// Only the age is bounded. A size limit (MaxBytes) is left out on purpose: the
+// broker reserves it up front and refuses a stream once the reservations of
+// all of them exceed its storage, which would leave a new Core without one.
+func streamConfig(cfg Config) jetstream.StreamConfig {
+	return jetstream.StreamConfig{
+		Name:      cfg.StreamName,
+		Subjects:  []string{cfg.SubjectPrefix},
+		Retention: jetstream.LimitsPolicy,
+		MaxAge:    streamMaxAge(cfg.MaxAge),
+	}
+}
+
+// streamMaxAge resolves Config.MaxAge into what the broker receives, where
+// zero means "no age limit".
+func streamMaxAge(configured time.Duration) time.Duration {
+	age := configured
+	if age == 0 {
+		age = DefaultStreamMaxAge
+		if v := os.Getenv("STRIX_STREAM_MAX_AGE"); v != "" {
+			if d, err := time.ParseDuration(v); err == nil && d != 0 {
+				age = d
+			}
+		}
+	}
+	switch {
+	case age < 0:
+		return 0
+	case age < MinStreamMaxAge:
+		return MinStreamMaxAge
+	}
+	return age
 }
 
 // warnOnce logs the first failure only: a broker that is down for an hour
